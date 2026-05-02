@@ -724,7 +724,7 @@ async function viewAthlete(id){
               <span style="font-size:11px;color:var(--dim)">Micro ${p.microciclo_activo||p.microciclo} · Sem ${p.semana_activa||p.semana} · ${new Date(p.created_at).toLocaleDateString("es-AR")}</span>
               ${p.activo?'<span style="font-size:9px;color:var(--success);font-weight:700;letter-spacing:1px">ACTIVO</span>':""}
               <div style="margin-left:auto;display:flex;gap:6px;flex-shrink:0">
-                ${p.activo&&parseInt(a.dias_por_semana)>1?`<button class="btn btn-primary btn-sm" onclick="setupNewPlan('${a.id}')" style="display:inline-flex">+ Cargar próximo micro</button>`:""}
+                ${p.activo&&parseInt(a.dias_por_semana)>1?`<button class="btn btn-primary btn-sm" onclick="setupNewPlan('${a.id}')" style="display:inline-flex">+ Cargar próximo micro</button>`:""} ${p.activo?`<button class="btn btn-secondary btn-sm" onclick="editPlan('${p.id}','${a.id}')" style="display:inline-flex">✏️ Editar</button>`:""}
                 ${!p.activo?`<button class="btn btn-ghost btn-sm" onclick="activatePlan('${p.id}','${a.id}')" style="display:inline-flex">✓ Activar</button>`:""}
                 <button class="btn btn-ghost btn-sm" onclick="deletePlan('${p.id}','${a.id}')" style="display:inline-flex;color:#d47070">✕ Borrar</button>
               </div>
@@ -1877,10 +1877,162 @@ function copyShareLink(){
 }
 
 
-function closeModal(id){document.getElementById(id).classList.remove("open");}
-document.querySelectorAll(".modal-overlay").forEach(m=>m.addEventListener("click",e=>{if(e.target===m)m.classList.remove("open");}));
+// ── EDIT PLAN ──────────────────────────────────────────
+// editMode stores {planId, atletaId, ejMap: {bloqueId: [ejIds]}}
+let editMode = null;
 
-if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));}
+async function editPlan(planId, atletaId){
+  // Switch to nuevo-plan tab
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(t=>t.classList.remove("active"));
+  document.getElementById("view-nuevo-plan").classList.add("active");
+  document.querySelectorAll(".tab-btn")[1]?.classList.add("active");
+
+  populateAthleteSelect();
+  const sel=document.getElementById("np-atleta");
+  if(sel) sel.value=atletaId;
+
+  // Load plan data
+  const plans=await sb("planes?id=eq."+planId+"&select=*");
+  const plan=plans[0];
+  if(!plan) return;
+
+  // Pre-fill form fields
+  const fe=document.getElementById("np-fase");
+  const me=document.getElementById("np-micro");
+  if(fe) fe.value=plan.fase_actual||plan.fase||"F1";
+  if(me) me.value=String(plan.microciclo_activo||plan.microciclo||1);
+
+  // Show edit mode banner
+  const banner=document.getElementById("np-continuation-banner");
+  if(banner){
+    banner.style.display="block";
+    banner.innerHTML=`<div style="padding:10px 14px;background:rgba(74,127,165,0.1);border:1px solid rgba(74,127,165,0.3);border-radius:3px;font-size:11px;color:#7ab3d4">
+      ✏️ Modo edición — los cambios se aplican sobre el plan activo. Los registros del atleta se mantienen.
+    </div>`;
+  }
+
+  // Load current microciclo days
+  const activeMicro=plan.microciclo_activo||plan.microciclo||1;
+  const dias=await sb("plan_dias?plan_id=eq."+planId+"&microciclo=eq."+activeMicro+"&semana=eq.A&order=orden");
+  const diasToUse=dias.length?dias:await sb("plan_dias?plan_id=eq."+planId+"&order=orden&limit=20");
+
+  // Store edit mode with IDs for updating existing records
+  editMode={planId, atletaId, diaIds:diasToUse.map(d=>d.id)};
+
+  // Build planDays from existing data
+  planDays=[];
+  const ejMap={}; // bloqueId -> [ejIds] for updating existing records
+  const diaIdMap={}; // index -> diaId
+
+  for(let di=0;di<diasToUse.length;di++){
+    const dia=diasToUse[di];
+    diaIdMap[di]=dia.id;
+    const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&order=orden");
+    const dayBlocks=[];
+    for(const b of bloques){
+      const ejs=await sb("plan_ejercicios?bloque_id=eq."+b.id+"&order=orden");
+      ejMap[b.id]=ejs.map(e=>e.id);
+      dayBlocks.push({
+        type:b.tipo, badge:b.badge, note:b.nota||"",
+        _bloqueId:b.id, // store ID for updating
+        exercises:ejs.map(e=>({
+          name:e.nombre, custom:"", videoUrl:e.video_url||"",
+          overrideInt:true, series:String(e.series||""), reps:e.reps||"",
+          rpeRir:e.rpe||e.rir||"",
+          _ejId:e.id // store ID for updating
+        }))
+      });
+    }
+    planDays.push({label:dia.label, desc:dia.descripcion||"", blocks:dayBlocks, _diaId:dia.id});
+  }
+
+  editMode.ejMap=ejMap;
+  editMode.diaIdMap=diaIdMap;
+
+  // Show/hide phase controls
+  const a=athletes.find(x=>x.id===atletaId);
+  const isOneDay=parseInt(a?.dias_por_semana)===1;
+  const phaseCtrl=document.getElementById("phase-controls");
+  const intCard=document.getElementById("np-int-card");
+  if(isOneDay){if(phaseCtrl)phaseCtrl.style.display="none";if(intCard)intCard.style.display="none";}
+  else{if(phaseCtrl)phaseCtrl.style.display="contents";if(intCard)intCard.style.display="block";}
+
+  // Replace save button text
+  const saveBtn=document.querySelector("#view-nuevo-plan .btn-primary[onclick='savePlan()']");
+  if(saveBtn) saveBtn.textContent="💾 Guardar cambios";
+
+  setTimeout(()=>{updateMicroOptions();if(!isOneDay)updateIntPreview();renderDays();},80);
+}
+
+// Override savePlan to handle edit mode
+const _originalSavePlan=savePlan;
+async function savePlan(){
+  if(!editMode){await _originalSavePlan();return;}
+
+  // EDIT MODE: update existing records
+  try{
+    for(let di=0;di<planDays.length;di++){
+      const day=planDays[di];
+      const diaId=editMode.diaIdMap[di]||day._diaId;
+      if(!diaId) continue;
+
+      // Update dia label/desc
+      await sb("plan_dias?id=eq."+diaId,"PATCH",{label:day.label,descripcion:day.desc});
+
+      for(let bi=0;bi<day.blocks.length;bi++){
+        const block=day.blocks[bi];
+        const bloqueId=block._bloqueId;
+        if(!bloqueId) continue;
+
+        // Update bloque
+        await sb("plan_bloques?id=eq."+bloqueId,"PATCH",{tipo:block.type,badge:block.badge,nota:block.note||""});
+
+        const existingEjIds=editMode.ejMap[bloqueId]||[];
+
+        for(let ei=0;ei<block.exercises.length;ei++){
+          const ex=block.exercises[ei];
+          const nombre=ex.custom?.trim()||ex.name||"";
+          if(!nombre) continue;
+
+          const isOneDay=parseInt(athletes.find(x=>x.id===editMode.atletaId)?.dias_por_semana)===1;
+          const int=getInt("A");
+          const isMain=block.badge==="Principal"||block.badge==="Core";
+          const bi2=isMain?int:{...int,r:!isNaN(parseInt(int.r))?String(Math.max(1,parseInt(int.r)-1)):int.r};
+
+          const ejData={
+            nombre,
+            series:parseInt(ex.series)||bi2.s,
+            reps:ex.reps||bi2.r,
+            rpe:isOneDay?(ex.rpeRir||null):bi2.rpe,
+            rir:isOneDay?null:bi2.rir,
+            video_url:ex.videoUrl||null
+          };
+
+          if(ex._ejId){
+            // Update existing
+            await sb("plan_ejercicios?id=eq."+ex._ejId,"PATCH",ejData);
+          } else {
+            // New exercise added
+            await sb("plan_ejercicios","POST",{bloque_id:bloqueId,orden:ei+1,...ejData});
+          }
+        }
+      }
+    }
+
+    editMode=null;
+    const banner=document.getElementById("np-continuation-banner");
+    if(banner) banner.style.display="none";
+    alert("✓ Plan actualizado");
+    await loadAthletes();
+    coachTab("atletas");
+  }catch(e){
+    alert("Error al guardar: "+e.message);
+    console.error(e);
+  }
+}
+
+// ── HISTORIAL ATLETA REORGANIZADO ────────────────────────
 </script>
 </body>
 </html>
