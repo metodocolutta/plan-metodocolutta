@@ -692,19 +692,20 @@ function populateAthleteSelect(){
 async function viewAthlete(id){
   const a=athletes.find(x=>x.id===id);if(!a)return;
   document.getElementById("detail-title").innerHTML=`<em>${a.nombre}</em>`;
+
   const planes=await sb("planes?atleta_id=eq."+id+"&order=created_at.desc");
-  const regs=await sb("registros?atleta_id=eq."+id+"&order=fecha.desc&limit=20");
+  const regs=await sb("registros?atleta_id=eq."+id+"&select=id&limit=1");
+
   document.getElementById("atleta-detail-content").innerHTML=`
     <div class="ath-bar">
       <div class="ath-item"><div class="ath-lbl">Email</div><div class="ath-val">${a.email||"—"}</div></div>
-      <div class="ath-item"><div class="ath-lbl">Frecuencia</div><div class="ath-val">${a.dias_por_semana} días/sem</div></div>
+      <div class="ath-item"><div class="ath-lbl">Frecuencia</div><div class="ath-val">${a.dias_por_semana} día${parseInt(a.dias_por_semana)===1?"":"s"}/sem</div></div>
       <div class="ath-item"><div class="ath-lbl">Planes</div><div class="ath-val">${planes.length}</div></div>
-      <div class="ath-item"><div class="ath-lbl">Registros</div><div class="ath-val">${regs.length}</div></div>
     </div>
 
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;padding:14px;background:rgba(240,236,227,0.04);border-radius:3px;border:1px solid rgba(240,236,227,0.08);">
       <button class="btn btn-primary" onclick="setupNewPlan('${a.id}')" style="display:inline-flex">${parseInt(a.dias_por_semana)===1?"+ Nuevo entrenamiento":"+ Nuevo plan"}</button>
-      <button class="btn btn-secondary" onclick="showShareLink('${a.token}','${a.nombre}')" style="display:inline-flex">🔗 Link atleta</button>
+      <button class="btn btn-secondary" onclick="showShareLink('${a.token}','${a.nombre}')" style="display:inline-flex">🔗 Link</button>
       <button class="btn btn-secondary" onclick="openEditAthleteModal('${a.id}')" style="display:inline-flex">✏️ Editar</button>
       <button class="btn btn-secondary" onclick="archiveAthlete('${a.id}','${a.nombre}',${a.activo!==false})" style="display:inline-flex">${a.activo===false?"↩ Reactivar":"📦 Archivar"}</button>
       <button class="btn btn-danger" onclick="deleteAthlete('${a.id}','${a.nombre}')" style="display:inline-flex;background:rgba(138,74,74,0.2);color:#d47070;border-color:rgba(138,74,74,0.3)">✕ Eliminar</button>
@@ -712,1188 +713,196 @@ async function viewAthlete(id){
 
     ${a.notas?`<div class="card" style="margin-bottom:10px"><div class="card-lbl">Notas</div><div style="font-size:12px;color:var(--dim);line-height:1.6">${a.notas}</div></div>`:""}
 
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <div class="card-lbl" style="margin-bottom:0">Planes</div>
-      </div>
-      ${!planes.length?'<div class="empty" style="padding:16px 0">Sin planes todavía. Creá el primero con el botón de arriba.</div>':planes.map(p=>`
-        <div style="padding:10px 0;border-bottom:1px solid rgba(240,236,227,0.05);">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <span style="font-size:12px;font-weight:700;color:${PHASE_COLORS[p.fase]||"var(--gold)"}">${p.fase} · ${PHASE_LABELS[p.fase]||""}</span>
-            <span style="font-size:11px;color:var(--dim)">Micro ${p.microciclo_activo||p.microciclo} · Sem ${p.semana_activa||p.semana} · ${new Date(p.created_at).toLocaleDateString("es-AR")}</span>
-            ${p.activo?'<span style="font-size:9px;color:var(--success);font-weight:700;letter-spacing:1px">ACTIVO</span>':""}
-            <div style="margin-left:auto;display:flex;gap:6px;flex-shrink:0;">
-              ${p.activo&&parseInt(a.dias_por_semana)>1?`<button class="btn btn-primary btn-sm" onclick="setupNewPlan('${a.id}')" style="display:inline-flex;margin-right:4px">+ Cargar próximo micro</button>`:""} ${!p.activo?`<button class="btn btn-ghost btn-sm" onclick="activatePlan('${p.id}','${a.id}')" style="display:inline-flex">✓ Activar</button>`:""}
-              <button class="btn btn-ghost btn-sm" onclick="deletePlan('${p.id}','${a.id}')" style="display:inline-flex;color:#d47070">✕ Borrar</button>
+    <!-- PLANS SECTION -->
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-lbl">Planes activos</div>
+      ${!planes.length?'<div class="empty" style="padding:14px 0">Sin planes todavía.</div>':
+        planes.map(p=>`
+          <div style="padding:10px 0;border-bottom:1px solid rgba(240,236,227,0.05)">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:12px;font-weight:700;color:${PHASE_COLORS[p.fase]||"var(--gold)"}">${p.fase||"Libre"} · ${PHASE_LABELS[p.fase]||""}</span>
+              <span style="font-size:11px;color:var(--dim)">Micro ${p.microciclo_activo||p.microciclo} · Sem ${p.semana_activa||p.semana} · ${new Date(p.created_at).toLocaleDateString("es-AR")}</span>
+              ${p.activo?'<span style="font-size:9px;color:var(--success);font-weight:700;letter-spacing:1px">ACTIVO</span>':""}
+              <div style="margin-left:auto;display:flex;gap:6px;flex-shrink:0">
+                ${p.activo&&parseInt(a.dias_por_semana)>1?`<button class="btn btn-primary btn-sm" onclick="setupNewPlan('${a.id}')" style="display:inline-flex">+ Cargar próximo micro</button>`:""}
+                ${!p.activo?`<button class="btn btn-ghost btn-sm" onclick="activatePlan('${p.id}','${a.id}')" style="display:inline-flex">✓ Activar</button>`:""}
+                <button class="btn btn-ghost btn-sm" onclick="deletePlan('${p.id}','${a.id}')" style="display:inline-flex;color:#d47070">✕ Borrar</button>
+              </div>
             </div>
-          </div>
-          <div id="plan-detail-${p.id}" style="display:none;margin-top:10px;"></div>
-          <button class="btn btn-ghost btn-sm" style="margin-top:6px;font-size:9px;" onclick="togglePlanDetail('${p.id}')">Ver ejercicios ↓</button>
-        </div>`).join("")}
+          </div>`).join("")}
     </div>
 
-    ${regs.length?`<div class="card" style="margin-top:10px">
-      <div class="card-lbl">Últimos registros</div>
-      ${regs.slice(0,8).map(r=>`<div style="padding:7px 0;border-bottom:1px solid rgba(240,236,227,0.05)">
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <span style="font-size:11px;color:var(--dim)">${new Date(r.fecha).toLocaleDateString("es-AR")}</span>
-          ${r.peso_utilizado?`<span style="font-size:12px;color:var(--gold);font-weight:600">${r.peso_utilizado}</span>`:""}
-          ${r.estado_energia?`<span style="font-size:10px;color:var(--dim)">Estado: ${r.estado_energia}/10</span>`:""}
-        </div>
-        ${r.comentario_atleta?`<div style="font-size:11px;color:var(--dim);margin-top:2px;font-style:italic">"${r.comentario_atleta}"</div>`:""}
-      </div>`).join("")}
-    </div>`:""}
+    <!-- HISTORIAL -->
+    <div id="historial-${id}" class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="card-lbl" style="margin-bottom:0">Historial de entrenamientos</div>
+        <button class="btn btn-ghost btn-sm" onclick="loadHistorialAtleta('${id}','${planes[0]?.id||''}')">Cargar historial ↓</button>
+      </div>
+      <div id="historial-content-${id}"><div style="font-size:11px;color:var(--dim)">Hacé click en "Cargar historial" para ver los registros.</div></div>
+    </div>
   `;
+
   coachTab("atleta-detail");
 }
 
-async function togglePlanDetail(planId){
-  const el=document.getElementById("plan-detail-"+planId);
-  if(!el) return;
-  if(el.style.display!=="none"){el.style.display="none";return;}
-  el.style.display="block";
-  if(el.innerHTML.trim()) return;
-  el.innerHTML='<div style="font-size:11px;color:var(--dim);padding:8px 0">Cargando...</div>';
+async function loadHistorialAtleta(atletaId, planId){
+  const container=document.getElementById("historial-content-"+atletaId);
+  if(!container) return;
+  container.innerHTML='<div style="font-size:11px;color:var(--dim);padding:8px 0">Cargando...</div>';
 
   try{
-    // Get ALL dias for this plan grouped by microciclo+semana
-    const dias=await sb("plan_dias?plan_id=eq."+planId+"&order=microciclo,semana,orden");
-    if(!dias.length){el.innerHTML='<div style="font-size:11px;color:var(--dim)">Sin días cargados.</div>';return;}
-
-    // Group by microciclo + semana
-    const groups={};
-    dias.forEach(d=>{
-      const micro=d.microciclo||1;
-      const sem=d.semana||"A";
-      const key="Micro "+micro+" · Sem "+sem;
-      if(!groups[key]) groups[key]={micro,sem,dias:[]};
-      groups[key].dias.push(d);
-    });
+    // Get all plans for this athlete
+    const planes=await sb("planes?atleta_id=eq."+atletaId+"&order=created_at.desc");
+    if(!planes.length){container.innerHTML='<div style="font-size:11px;color:var(--dim)">Sin planes todavía.</div>';return;}
 
     let html="";
-    for(const [groupLabel, group] of Object.entries(groups)){
-      html+=`<div style="margin-top:10px;margin-bottom:4px">
-        <div style="font-size:9px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;font-weight:700;padding:4px 0;border-bottom:1px solid rgba(201,168,76,0.2);margin-bottom:6px">
-          ${groupLabel}
-        </div>`;
 
-      for(const dia of group.dias){
-        const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&order=orden");
-        html+=`<div style="margin-bottom:8px">
-          <div style="font-size:11px;font-weight:700;color:var(--white);margin-bottom:3px">${dia.label} — ${dia.descripcion||""}</div>`;
-
-        for(const b of bloques){
-          const ejs=await sb("plan_ejercicios?bloque_id=eq."+b.id+"&order=orden");
-          const c=PC[b.tipo]||"#607080";
-          html+=`<div style="margin-left:8px;margin-bottom:3px">
-            <span style="font-size:8px;font-weight:700;letter-spacing:1.5px;color:${c};text-transform:uppercase">${b.badge} · ${b.tipo}</span>
-            ${ejs.map(e=>`<div style="font-size:11px;color:var(--dim);padding:1px 0 1px 8px">
-              ${e.nombre}
-              <span style="color:rgba(240,236,227,0.3);font-size:10px">
-                ${e.series?e.series+"×":""} ${e.reps||""} ${e.rpe?'· '+e.rpe:""} ${e.rir?'· '+e.rir:""}
-              </span>
-            </div>`).join("")}
-          </div>`;
-        }
-        html+="</div>";
-      }
-      html+="</div>";
-    }
-    el.innerHTML=html;
-  }catch(e){
-    el.innerHTML='<div style="font-size:11px;color:#d47070">Error al cargar.</div>';
-    console.error(e);
-  }
-}
-
-
-async function activatePlan(planId, atletaId){
-  try{
-    // Deactivate all plans for this athlete
-    await sb("planes?atleta_id=eq."+atletaId,"PATCH",{activo:false});
-    // Activate selected
-    await sb("planes?id=eq."+planId,"PATCH",{activo:true});
-    viewAthlete(atletaId);
-  }catch(e){alert("Error: "+e.message);}
-}
-
-async function deletePlan(planId, atletaId){
-  if(!confirm("¿Borrar este plan? Se eliminarán también todos sus días, bloques y ejercicios.")) return;
-  try{
-    await sb("planes?id=eq."+planId,"DELETE");
-    viewAthlete(atletaId);
-  }catch(e){alert("Error: "+e.message);}
-}
-
-function openNewAthleteModal(){document.getElementById("modal-new-athlete").classList.add("open");}
-
-async function saveNewAthlete(){
-  const nombre=document.getElementById("na-nombre").value.trim();
-  if(!nombre){alert("El nombre es obligatorio");return;}
-  try{
-    await sb("atletas","POST",{nombre,email:document.getElementById("na-email").value.trim()||null,dias_por_semana:parseInt(document.getElementById("na-dias").value),notas:document.getElementById("na-notas").value.trim()||null});
-    closeModal("modal-new-athlete");
-    ["na-nombre","na-email","na-notas"].forEach(id=>document.getElementById(id).value="");
-    await loadAthletes();
-  }catch(e){alert("Error: "+e.message);}
-}
-
-function getInt(){
-  const ph=document.getElementById("np-fase")?.value||"F1";
-  const mc=parseInt(document.getElementById("np-micro")?.value||1);
-  const wk=document.getElementById("np-semana")?.value||"A";
-  return INT[ph]?.[mc]?.[wk]||INT.F1[1].A;
-}
-
-const PHASE_MICROS={
-  F1:[{v:1,label:"Sem 1–2"},{v:2,label:"Sem 3–4"}],
-  F2:[{v:1,label:"Sem 1–2"},{v:2,label:"Sem 3–4"},{v:3,label:"Sem 5–6"},{v:4,label:"Sem 7–8"}],
-  F3:[{v:1,label:"Sem 1–2"},{v:2,label:"Sem 3–4"},{v:3,label:"Sem 5–6"},{v:4,label:"Sem 7–8"}],
-  F4:[{v:1,label:"Sem 1–2"},{v:2,label:"Sem 3–4"},{v:3,label:"Sem 5–6"}]
-};
-
-function updateMicroOptions(){
-  const fase=document.getElementById("np-fase")?.value||"F1";
-  const sel=document.getElementById("np-micro");
-  if(!sel) return;
-  const cur=parseInt(sel.value)||1;
-  const opts=PHASE_MICROS[fase]||PHASE_MICROS.F1;
-  sel.innerHTML=opts.map(o=>`<option value="${o.v}" ${o.v===cur&&o.v<=opts.length?"selected":""}>${o.label}</option>`).join("");
-  // If current value exceeds max for this phase, reset to last valid
-  if(cur>opts.length) sel.value=String(opts.length);
-}
-
-function updateIntPreview(){
-  const i=getInt();const el=document.getElementById("np-int-preview");if(!el)return;
-  el.innerHTML=`
-    <span class="ipill" style="color:#4a7fa5;border-color:#4a7fa530;background:rgba(74,127,165,0.1)">📊 ${i.s} series</span>
-    <span class="ipill" style="color:#5b9e8a;border-color:#5b9e8a30;background:rgba(91,158,138,0.1)">🔢 ${i.r} reps</span>
-    <span class="ipill" style="color:#c9a84c;border-color:#c9a84c30;background:rgba(201,168,76,0.1)">⚡ ${i.rpe}</span>
-    <span class="ipill" style="color:#a57060;border-color:#a5706030;background:rgba(165,112,96,0.1)">🎯 ${i.rir}</span>
-    ${i.note?`<span class="ipill" style="color:var(--dim);border-color:rgba(240,236,227,0.1)">📝 ${i.note}</span>`:""}
-  `;
-  if(planDays.length) renderDays();
-}
-
-function onAthleteChange(){
-  const id=document.getElementById("np-atleta")?.value;
-  if(!id) return;
-  const a=athletes.find(x=>x.id===id);
-  const isOneDay=parseInt(a?.dias_por_semana)===1;
-
-  // Show/hide phase controls and intensity card for 1-day plans
-  const phaseCtrl=document.getElementById("phase-controls");
-  const intCard=document.getElementById("np-int-card");
-  const varCard=document.getElementById("variant-selector-card");
-
-  if(phaseCtrl) phaseCtrl.style.display=isOneDay?"none":"contents";
-  if(intCard) intCard.style.display=isOneDay?"none":"block";
-
-  setTimeout(()=>{
-    updateMicroOptions();
-    if(!isOneDay) updateIntPreview();
-    renderVariantSelector();
-  },50);
-}
-
-async function setupNewPlan(athleteId){
-  // Switch tab
-  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
-  document.querySelectorAll(".tab-btn").forEach(t=>t.classList.remove("active"));
-  document.getElementById("view-nuevo-plan").classList.add("active");
-  document.querySelectorAll(".tab-btn")[1]?.classList.add("active");
-  populateAthleteSelect();
-  if(athleteId){const s=document.getElementById("np-atleta");if(s)s.value=athleteId;}
-
-  const id=athleteId||document.getElementById("np-atleta")?.value;
-  const a=athletes.find(x=>x.id===id);
-  const isOneDay=parseInt(a?.dias_por_semana)===1;
-
-  // Hide continuation banner
-  const banner=document.getElementById("np-continuation-banner");
-  if(banner) banner.style.display="none";
-
-  // Check for existing active plan to pre-fill next microciclo
-  if(!isOneDay && id){
-    try{
-      const activos=await sb("planes?atleta_id=eq."+id+"&activo=eq.true&select=id,fase,microciclo,semana,microciclo_activo,semana_activa,fase_actual&limit=1");
-      if(activos.length){
-        const cur=activos[0];
-        const curMicro=cur.microciclo_activo||cur.microciclo||1;
-        const curFase=cur.fase_actual||cur.fase||"F1";
-        const phaseMap={F1:2,F2:4,F3:4,F4:3}; // F1:4sem, F2:8sem, F3:8sem, F4:6sem → microciclos de 2 sem c/u
-        const maxMicro=phaseMap[curFase]||4;
-        let nextMicro=curMicro+1;
-        let nextFase=curFase;
-        if(nextMicro>maxMicro){
-          nextMicro=1;
-          const po=["F1","F2","F3","F4"];
-          nextFase=po[po.indexOf(curFase)+1]||curFase;
-        }
-        // Pre-fill form
-        const fe=document.getElementById("np-fase");
-        const me=document.getElementById("np-micro");
-        const se=document.getElementById("np-semana");
-        if(fe) fe.value=nextFase;
-        if(me) me.value=String(nextMicro);
-        if(se) se.value="A";
-        // Load prev exercises
-        const prevDias=await sb("plan_dias?plan_id=eq."+cur.id+"&microciclo=eq."+curMicro+"&semana=eq.A&order=orden");
-        if(prevDias.length){
-          planDays=[];
-          for(const dia of prevDias){
-            const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&order=orden");
-            const dayBlocks=[];
-            for(const b of bloques){
-              const ejs=await sb("plan_ejercicios?bloque_id=eq."+b.id+"&order=orden");
-              dayBlocks.push({type:b.tipo,badge:b.badge,note:b.nota||"",
-                exercises:ejs.map(e=>({name:e.nombre,custom:"",videoUrl:e.video_url||"",
-                  overrideInt:false,series:String(e.series||""),reps:e.reps||"",rpeRir:e.rpe||e.rir||""}))});
-            }
-            planDays.push({label:dia.label,desc:dia.descripcion||"",blocks:dayBlocks});
-          }
-          if(banner){
-            banner.style.display="block";
-            banner.innerHTML=`<div style="padding:10px 14px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:3px;font-size:11px;color:var(--gold)">
-              📋 Pre-cargado desde ${curFase} · Micro ${curMicro} — revisá y ajustá intensidad para ${nextFase} · Micro ${nextMicro}
-            </div>`;
-          }
-          setTimeout(()=>{
-            updateMicroOptions();
-            // Hide phase/intensity for 1-day plans
-            const phaseCtrl2=document.getElementById("phase-controls");
-            const intCard2=document.getElementById("np-int-card");
-            if(isOneDay){
-              if(phaseCtrl2) phaseCtrl2.style.display="none";
-              if(intCard2) intCard2.style.display="none";
-            } else {
-              if(phaseCtrl2) phaseCtrl2.style.display="contents";
-              if(intCard2) intCard2.style.display="block";
-              updateIntPreview();
-            }
-            renderDays();
-          },80);
-          return;
-        }
-      }
-    }catch(e){console.error("prefill error:",e);}
-  }
-  // Fallback: use template
-  const tmpl=DAY_TEMPLATES[parseInt(a?.dias_por_semana)||4]||DAY_TEMPLATES[4];
-  planDays=tmpl.map(d=>({label:d.label,desc:d.desc,blocks:d.blocks.map(b=>({type:b.type,badge:b.badge,note:b.note,exercises:[{name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""}]}))}));
-  setTimeout(()=>{
-    updateMicroOptions();
-    // Hide phase/intensity for 1-day plans
-    const phaseCtrl=document.getElementById("phase-controls");
-    const intCard=document.getElementById("np-int-card");
-    if(isOneDay){
-      if(phaseCtrl) phaseCtrl.style.display="none";
-      if(intCard) intCard.style.display="none";
-    } else {
-      if(phaseCtrl) phaseCtrl.style.display="contents";
-      if(intCard) intCard.style.display="block";
-      updateIntPreview();
-    }
-    renderVariantSelector();
-  },80);
-}
-
-function renderVariantSelector(){
-  const id=document.getElementById("np-atleta")?.value;
-  const a=athletes.find(x=>x.id===id);
-  const days=parseInt(a?.dias_por_semana)||4;
-  const variants=VARIANTS[days]||VARIANTS[4];
-  const el=document.getElementById("variant-options");
-  if(!el) return;
-
-  // Debug
-  console.log("Athlete days:", days, "Variants available:", variants?.length, "VARIANTS keys:", Object.keys(VARIANTS));
-
-  // Show header with frequency info
-  const freqLabel = days===1 ? "1 día / semana" : days+" días / semana";
-  el.innerHTML=`<div style="font-size:10px;color:var(--dim);letter-spacing:1px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(240,236,227,0.06)">
-    Mostrando variantes para <span style="color:var(--gold);font-weight:600">${freqLabel}</span>
-    ${!variants||!variants.length?'<span style="color:#d47070"> — Sin variantes definidas para esta frecuencia</span>':''}
-  </div>`+variants.map((v,i)=>`
-    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:3px;border:1px solid rgba(240,236,227,0.1);cursor:pointer;transition:all .15s;background:var(--faint)"
-      onmouseover="this.style.borderColor='rgba(201,168,76,0.3)'"
-      onmouseout="this.style.borderColor=document.getElementById('var-${v.id}').checked?'rgba(201,168,76,0.5)':'rgba(240,236,227,0.1)'"
-    >
-      <input type="radio" name="variant" id="var-${v.id}" value="${i}" ${i===0?"checked":""} style="margin-top:3px;accent-color:var(--gold)" onchange="applyVariant(${i})">
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--white);margin-bottom:2px">${v.name}</div>
-        <div style="font-size:10px;color:var(--dim);letter-spacing:1px">${v.days.length} días · ${v.days.map(d=>d.desc).join(" / ")}</div>
-      </div>
-    </label>
-  `).join("")+`
-    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:3px;border:1px solid rgba(240,236,227,0.1);cursor:pointer;transition:all .15s;background:var(--faint)">
-      <input type="radio" name="variant" id="var-custom" value="custom" style="margin-top:3px;accent-color:var(--gold)" onchange="applyVariant('custom')">
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--gold-lt);margin-bottom:2px">Personalizada — armo yo la estructura</div>
-        <div style="font-size:10px;color:var(--dim);letter-spacing:1px">Días vacíos · agregás patrones y bloques libremente</div>
-      </div>
-    </label>
-  `;
-
-  // Apply first variant by default
-  applyVariant(0);
-}
-
-function applyVariant(idx){
-  const id=document.getElementById("np-atleta")?.value;
-  const a=athletes.find(x=>x.id===id);
-  const days=parseInt(a?.dias_por_semana)||4;
-
-  const customCtrl=document.getElementById("custom-day-controls");
-
-  if(idx==="custom"){
-    planDays=[];
-    if(customCtrl) customCtrl.style.display="block";
-    document.getElementById("np-days").innerHTML=`<div class="empty" style="padding:20px;border:1px dashed rgba(240,236,227,0.15);border-radius:3px">Definí la cantidad de días arriba y hacé click en "Generar días vacíos"</div>`;
-    return;
-  }
-
-  if(customCtrl) customCtrl.style.display="none";
-
-  const variants=VARIANTS[days]||VARIANTS[4];
-  const variant=variants[idx];
-  if(!variant) return;
-
-  planDays=variant.days.map(d=>({
-    label:d.label, desc:d.desc,
-    blocks:d.blocks.map(b=>({
-      type:b.type, badge:b.badge, note:b.note,
-      exercises:[{name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""}]
-    }))
-  }));
-
-  setTimeout(()=>renderDays(), 50);
-}
-
-function initCustomDays(){
-  const n=parseInt(document.getElementById("custom-days-count")?.value)||4;
-  planDays=[];
-  for(let i=0;i<n;i++){
-    planDays.push({
-      label:"Día "+(i+1),
-      desc:"Personalizado",
-      blocks:[{type:"core",badge:"Core",note:"",exercises:[{name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""}]}]
-    });
-  }
-  renderDays();
-}
-
-function isOneDayPlan(){
-  const id=document.getElementById("np-atleta")?.value;
-  const a=athletes.find(x=>x.id===id);
-  return parseInt(a?.dias_por_semana)===1;
-}
-
-function renderDays(){
-  const container=document.getElementById("np-days");if(!container)return;
-  const int=getInt();container.innerHTML="";
-  planDays.forEach((day,di)=>{
-    const dc=document.createElement("div");dc.className="day-card";
-    dc.innerHTML=`<div class="day-header"><div class="day-num">${di+1}</div><div><div class="day-name">${day.label}</div><div class="day-desc">${day.desc}</div></div></div><div id="di-${di}"></div>
-      <div class="add-block-row">
-        <button class="btn btn-ghost btn-sm" onclick="addBlock(${di})">＋ Agregar bloque</button>
-      </div>
-      <div id="abp-${di}" style="display:none;margin:0 14px 12px;background:var(--navy-lt);border:1px solid rgba(201,168,76,0.25);border-radius:3px;padding:12px;">
-        <div style="font-size:10px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:10px">Configurar nuevo bloque</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
-          <div class="fg">
-            <label class="fl">Patrón</label>
-            <select class="fs" id="abt-${di}">
-              <option value="core">Core</option>
-              <option value="bisagra">Bisagra</option>
-              <option value="sentadilla">Sentadilla</option>
-              <option value="empuje">Empuje</option>
-              <option value="traccion">Tracción</option>
-              <option value="cargada">Cargada</option>
-              <option value="accesorio">Accesorio</option>
-            </select>
-          </div>
-          <div class="fg">
-            <label class="fl">Rol en el día</label>
-            <select class="fs" id="abb-${di}">
-              <option value="Principal">Principal</option>
-              <option value="Secundario">Secundario</option>
-              <option value="Core">Core</option>
-              <option value="Accesorio">Accesorio</option>
-              <option value="Repaso">Repaso</option>
-              <option value="Principal A">Principal A</option>
-              <option value="Principal B">Principal B</option>
-              <option value="Abre">Abre</option>
-              <option value="Extra">Extra</option>
-            </select>
-          </div>
-          <div class="fg">
-            <label class="fl">Nota (opcional)</label>
-            <input class="fi" type="text" id="abn-${di}" placeholder="ej: énfasis glúteo">
-          </div>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <button class="btn btn-primary btn-sm" onclick="confirmAddBlock(${di})">Agregar</button>
-          <button class="btn btn-ghost btn-sm" onclick="addBlock(${di})">Cancelar</button>
-        </div>
-      </div>`;
-    container.appendChild(dc);renderDayBlocks(di,int);
-  });
-}
-
-function renderDayBlocks(di,int){
-  int=int||getInt();const container=document.getElementById("di-"+di);if(!container)return;
-  container.innerHTML="";
-  planDays[di].blocks.forEach((block,bi)=>{
-    const c=PC[block.type]||"#607080";
-    const isMain=block.badge==="Principal"||block.badge==="Core";
-    const bi2=isMain?int:{...int,r:!isNaN(parseInt(int.r))?String(Math.max(1,parseInt(int.r)-1)):int.r,rir:int.rir.replace(/\d+/,n=>Math.min(4,parseInt(n)+1))};
-    const el=document.createElement("div");el.className="block open";el.id="b-"+di+"-"+bi;el.style.borderLeftColor=c;
-    const exRows=block.exercises.map((ex,ei)=>`
-      <div style="margin-bottom:7px;${ei>0?'padding-top:6px;border-top:1px dashed rgba(240,236,227,0.07)':''}">
-        ${block.exercises.length>1?`<div style="font-size:8px;letter-spacing:1px;color:${c};text-transform:uppercase;margin-bottom:3px">${String.fromCharCode(65+ei)}.</div>`:''}
-        <div class="ex-row">
-          <div class="ex-mini-group"><div class="ex-mini-lbl">Biblioteca</div>
-            <select class="ex-sel" style="border-left-color:${c}60" onchange="uef(${di},${bi},${ei},'name',this.value)">
-              <option value="">— Elegir —</option>
-              ${(EX[block.type]||[]).concat(customEx[block.type]||[]).map(e=>`<option value="${e}" ${e===ex.name?'selected':''}>${e}</option>`).join('')}
-            </select>
-          </div>
-          <div class="ex-mini-group"><div class="ex-mini-lbl">O escribir</div>
-            <input class="ex-inp" type="text" value="${ex.custom||''}" placeholder="Nombre libre..." oninput="uef(${di},${bi},${ei},'custom',this.value)">
-          </div>
-          <button class="btn btn-ghost btn-sm" style="padding-top:14px" onclick="rmEx(${di},${bi},${ei})">✕</button>
-        </div>
-        <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;align-items:flex-end;">
-          <div class="ex-mini-group" style="flex:1;min-width:90px"><div class="ex-mini-lbl">Video URL</div><input class="ex-mini" type="text" value="${ex.videoUrl||''}" placeholder="youtube.com/..." oninput="uef(${di},${bi},${ei},'videoUrl',this.value)"></div>
-          <div class="ex-mini-group" style="flex:0 0 55px"><div class="ex-mini-lbl">Series</div><input class="ex-mini" type="text" value="${isOneDayPlan()?(ex.series||""):ex.overrideInt&&ex.series?ex.series:bi2.s}" style="text-align:center" oninput="uef(${di},${bi},${ei},'series',this.value)"></div>
-          <div class="ex-mini-group" style="flex:0 0 55px"><div class="ex-mini-lbl">Reps</div><input class="ex-mini" type="text" value="${isOneDayPlan()?(ex.reps||""):ex.overrideInt&&ex.reps?ex.reps:bi2.r}" style="text-align:center" oninput="uef(${di},${bi},${ei},'reps',this.value)"></div>
-          ${isOneDayPlan()?`
-          <div class="ex-mini-group" style="flex:0 0 65px"><div class="ex-mini-lbl">RPE/RIR</div><input class="ex-mini" type="text" value="${ex.rpeRir||''}" placeholder="RPE 8" style="text-align:center" oninput="uef(${di},${bi},${ei},'rpeRir',this.value)"></div>
-          `:`<label style="display:flex;align-items:center;gap:3px;font-size:9px;color:var(--dim);cursor:pointer;padding-bottom:6px"><input type="checkbox" ${ex.overrideInt?'checked':''} onchange="tov(${di},${bi},${ei},this.checked)">Int. propia</label>`}
-        </div>
-      </div>`).join('');
-    el.innerHTML=`
-      <div class="block-header" onclick="this.closest('.block').classList.toggle('open')">
-        <span class="block-badge" style="color:${c};border-color:${c}40;background:${c}15">${block.badge}</span>
-        <span class="block-type-lbl">${block.type}</span>
-        <span style="font-size:9px;color:var(--dim)">${isOneDayPlan()?"":bi2.s+"×"+bi2.r+" · "+bi2.rir}</span>
-        <span class="block-chevron">↓</span>
-      </div>
-      <div class="block-body">
-        <div>${exRows}</div>
-        <div class="block-actions">
-          <button class="btn btn-ghost btn-sm" onclick="addExToBlock(${di},${bi})">＋ Ejercicio</button>
-          ${block.exercises.length>1?`<button class="btn btn-ghost btn-sm" onclick="rmLastEx(${di},${bi})">− Quitar último</button>`:''}
-          ${bi>0?`<button class="btn btn-ghost btn-sm" style="color:var(--danger);margin-left:auto" onclick="rmBlock(${di},${bi})">✕ Quitar bloque</button>`:''}
-        </div>
-      </div>`;
-    container.appendChild(el);
-  });
-}
-
-function uef(di,bi,ei,f,v){
-  if(!planDays[di]?.blocks[bi]?.exercises[ei])return;
-  planDays[di].blocks[bi].exercises[ei][f]=v;
-  if(f==="custom"&&v.trim()){const t=planDays[di].blocks[bi].type;if(!customEx[t])customEx[t]=[];if(!customEx[t].includes(v.trim())&&!EX[t]?.includes(v.trim()))customEx[t].push(v.trim());}
-}
-function tov(di,bi,ei,c){planDays[di].blocks[bi].exercises[ei].overrideInt=c;renderDayBlocks(di);}
-function addExToBlock(di,bi){planDays[di].blocks[bi].exercises.push({name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""});renderDayBlocks(di);}
-function rmEx(di,bi,ei){if(planDays[di].blocks[bi].exercises.length>1){planDays[di].blocks[bi].exercises.splice(ei,1);renderDayBlocks(di);}}
-function rmLastEx(di,bi){if(planDays[di].blocks[bi].exercises.length>1){planDays[di].blocks[bi].exercises.pop();renderDayBlocks(di);}}
-function rmBlock(di,bi){planDays[di].blocks.splice(bi,1);renderDayBlocks(di);}
-function addBlock(di){
-  const picker=document.getElementById("abp-"+di);
-  if(picker) picker.style.display=picker.style.display==="none"?"block":"none";
-}
-function confirmAddBlock(di){
-  const type=document.getElementById("abt-"+di)?.value||"accesorio";
-  const badge=document.getElementById("abb-"+di)?.value||"Bloque";
-  const note=document.getElementById("abn-"+di)?.value||"";
-  planDays[di].blocks.push({type,badge,note,exercises:[{name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""}]});
-  const p=document.getElementById("abp-"+di);if(p)p.style.display="none";
-  renderDayBlocks(di);
-}
-
-async function savePlan(){
-  const aid=document.getElementById("np-atleta")?.value;if(!aid){alert("Seleccioná un atleta");return;}
-  const int=getInt();
-  try{
-    const faseVal=document.getElementById("np-fase").value;
-    const microVal=parseInt(document.getElementById("np-micro").value);
-    const semVal=document.getElementById("np-semana").value;
-    const isOneDay=parseInt(athletes.find(x=>x.id===aid)?.dias_por_semana)===1;
-
-    // Check if athlete already has an active plan - if so, add microciclo to existing plan
-    const existingPlanes=await sb("planes?atleta_id=eq."+aid+"&activo=eq.true&select=id,microciclo,semana,fase");
-    let planId;
-
-    if(existingPlanes.length && !isOneDay){
-      // Add new microciclo to existing plan
-      planId=existingPlanes[0].id;
-      // Update plan's active microciclo tracking
-      await sb("planes?id=eq."+planId,"PATCH",{
-        microciclo:microVal,semana:semVal,fase:faseVal,
-        microciclo_activo:microVal,semana_activa:semVal,fase_actual:faseVal
-      });
-    } else {
-      // Create new plan
-      const planes=await sb("planes","POST",{
-        atleta_id:aid,fase:faseVal,microciclo:microVal,semana:semVal,activo:true,
-        microciclo_activo:microVal,semana_activa:semVal,fase_actual:faseVal
-      });
-      planId=planes[0].id;
-    }
-    for(let di=0;di<planDays.length;di++){
-      const day=planDays[di];
-      const dias=await sb("plan_dias","POST",{plan_id:planId,orden:di+1,label:day.label,descripcion:day.desc,microciclo:microVal,semana:semVal});
-      const diaId=dias[0].id;
-      for(let bi=0;bi<day.blocks.length;bi++){
-        const block=day.blocks[bi];
-        const bloques=await sb("plan_bloques","POST",{dia_id:diaId,orden:bi+1,tipo:block.type,badge:block.badge,nota:block.note});
-        const bloqueId=bloques[0].id;
-        const isMain=block.badge==="Principal"||block.badge==="Core";
-        const bi2=isMain?int:{...int,r:!isNaN(parseInt(int.r))?String(Math.max(1,parseInt(int.r)-1)):int.r};
-        for(let ei=0;ei<block.exercises.length;ei++){
-          const ex=block.exercises[ei];
-          const nombre=ex.custom?.trim()||ex.name||"";if(!nombre)continue;
-          const oneDay=parseInt(athletes.find(x=>x.id===aid)?.dias_por_semana)===1;
-          const rpeStr=oneDay?(ex.rpeRir||null):bi2.rpe;
-          const rirStr=oneDay?null:bi2.rir;
-          await sb("plan_ejercicios","POST",{bloque_id:bloqueId,orden:ei+1,nombre,
-            series:ex.overrideInt&&ex.series?parseInt(ex.series):(oneDay?parseInt(ex.series||4):bi2.s),
-            reps:ex.overrideInt&&ex.reps?ex.reps:(oneDay?(ex.reps||"8"):bi2.r),
-            rpe:rpeStr, rir:rirStr, video_url:ex.videoUrl||null});
-        }
-      }
-    }
-    alert("✓ Plan guardado");await loadAthletes();coachTab("atletas");
-  }catch(e){alert("Error: "+e.message);console.error(e);}
-}
-
-async function loadFeedback(){
-  const el=document.getElementById("feedback-list");
-  el.innerHTML='<div class="empty">Cargando...</div>';
-  try{
-    // Get all athletes with active plans
-    const aths=await sb("atletas?select=*&order=nombre");
-    if(!aths.length){el.innerHTML='<div class="empty">No hay atletas todavía.</div>';return;}
-
-    // Count pending
-    const allRegs=await sb("registros?comentario_atleta=not.is.null&select=id,comentarios_entrenador(id)");
-    const pending=allRegs.filter(r=>!r.comentarios_entrenador?.length).length;
-    if(pending>0){
-      document.getElementById("feedback-dot").style.display="inline-block";
-      document.getElementById("notif-count").textContent=pending+" sin responder";
-      document.getElementById("notif-count").style.display="inline";
-    } else {
-      document.getElementById("feedback-dot").style.display="none";
-      document.getElementById("notif-count").style.display="none";
-    }
-
-    // Build athlete selector tabs
-    el.innerHTML=`
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;" id="fb-athlete-tabs">
-        ${aths.map((a,i)=>`<button onclick="loadFeedbackForAthlete('${a.id}')" id="fbtab-${a.id}"
-          class="btn btn-${i===0?'primary':'secondary'} btn-sm">${a.nombre}</button>`).join("")}
-      </div>
-      <div id="fb-content"><div class="empty">Seleccioná un atleta</div></div>
-    `;
-
-    // Load first athlete by default
-    if(aths.length) loadFeedbackForAthlete(aths[0].id);
-
-  }catch(e){el.innerHTML='<div class="empty">Error al cargar.</div>';console.error(e);}
-}
-
-async function loadFeedbackForAthlete(atletaId){
-  // Update tab styles
-  document.querySelectorAll("[id^='fbtab-']").forEach(b=>{
-    b.className=b.id==="fbtab-"+atletaId?"btn btn-primary btn-sm":"btn btn-secondary btn-sm";
-  });
-
-  const container=document.getElementById("fb-content");
-  if(!container) return;
-  container.innerHTML='<div class="empty">Cargando...</div>';
-
-  try{
-    // Get active plan for athlete
-    const planes=await sb("planes?atleta_id=eq."+atletaId+"&activo=eq.true&order=created_at.desc&limit=1");
-    if(!planes.length){
-      container.innerHTML='<div class="empty">Este atleta no tiene un plan activo.</div>';return;
-    }
-    const plan=planes[0];
-    const dias=await sb("plan_dias?plan_id=eq."+plan.id+"&order=orden");
-
-    let html=`<div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:11px;color:var(--gold);letter-spacing:1px;font-weight:700">${plan.fase||"Plan libre"} · Micro ${plan.microciclo||"—"} · Sem ${plan.semana||"A"}</span>
-      <div style="display:flex;gap:6px;">
-        <button onclick="loadFeedbackWeek('${atletaId}','${plan.id}','A')" id="fbweek-A" class="btn btn-primary btn-sm">Semana A</button>
-        <button onclick="loadFeedbackWeek('${atletaId}','${plan.id}','B')" id="fbweek-B" class="btn btn-secondary btn-sm">Semana B</button>
-      </div>
-    </div>
-    <div id="fb-week-content"></div>`;
-
-    container.innerHTML=html;
-    loadFeedbackWeek(atletaId, plan.id, "A");
-
-  }catch(e){container.innerHTML='<div class="empty">Error.</div>';console.error(e);}
-}
-
-async function loadFeedbackWeek(atletaId, planId, week){
-  // Update week tabs
-  ["A","B"].forEach(w=>{
-    const b=document.getElementById("fbweek-"+w);
-    if(b) b.className=w===week?"btn btn-primary btn-sm":"btn btn-secondary btn-sm";
-  });
-
-  const container=document.getElementById("fb-week-content");
-  if(!container) return;
-  container.innerHTML='<div style="color:var(--dim);font-size:12px;padding:10px 0">Cargando...</div>';
-
-  try{
-    const dias=await sb("plan_dias?plan_id=eq."+planId+"&order=orden");
-    let html="";
-
-    for(const dia of dias){
-      const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&order=orden");
-      html+=`<div class="day-card" style="margin-bottom:10px">
-        <div class="day-header">
-          <div class="day-num">${dia.orden}</div>
-          <div><div class="day-name">${dia.label}</div><div class="day-desc">${dia.descripcion||""}</div></div>
-        </div>`;
-
-      for(const bloque of bloques){
-        const ejercicios=await sb("plan_ejercicios?bloque_id=eq."+bloque.id+"&order=orden");
-        const c=PC[bloque.tipo]||"#607080";
-
-        html+=`<div class="block open" style="border-left-color:${c}">
-          <div class="block-header" onclick="this.closest('.block').classList.toggle('open')">
-            <span class="block-badge" style="color:${c};border-color:${c}40;background:${c}15">${bloque.badge}</span>
-            <span class="block-type-lbl">${bloque.tipo}${bloque.nota?" · "+bloque.nota:""}</span>
-            <span class="block-chevron">↓</span>
-          </div>
-          <div class="block-body">`;
-
-        for(const ej of ejercicios){
-          // Get athlete's registro for this exercise
-          const regs=await sb("registros?ejercicio_id=eq."+ej.id+"&atleta_id=eq."+atletaId+"&semana_tipo=eq."+week+"&order=created_at.desc&limit=1");
-          const reg=regs[0]||null;
-          const comments=reg?await sb("comentarios_entrenador?registro_id=eq."+reg.id+"&order=created_at.asc"):[];
-          const hasComment=reg?.comentario_atleta;
-          const responded=comments.length>0;
-
-          html+=`<div style="border-bottom:1px solid rgba(240,236,227,0.05);padding:10px 0;">
-            <!-- Exercise header -->
-            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:4px">
-              <div>
-                <span style="font-size:13px;font-weight:600;color:var(--white)">${ej.nombre}</span>
-                <span style="font-size:10px;color:var(--dim);margin-left:8px">${ej.series}×${ej.reps}${ej.rpe?" · "+ej.rpe:""}${ej.rir?" · "+ej.rir:""}</span>
-              </div>
-              <span style="font-size:10px;font-weight:700;letter-spacing:1px;color:${reg?(hasComment&&!responded?"#e8c97a":responded?"var(--success)":"var(--dim)"):"rgba(240,236,227,0.2)"}">${reg?(hasComment&&!responded?"● PENDIENTE":responded?"✓ RESPONDIDO":"Registrado sin comentario"):"○ Sin registrar"}</span>
-            </div>
-
-            <!-- Athlete data table -->
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:${hasComment?'8px':'0'}">
-              <div style="background:var(--navy-lt);border-radius:3px;padding:8px 10px;">
-                <div style="font-size:8px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:3px">Peso</div>
-                <div style="font-size:13px;font-weight:600;color:var(--white)">${reg?.peso_utilizado||"—"}</div>
-              </div>
-              <div style="background:var(--navy-lt);border-radius:3px;padding:8px 10px;">
-                <div style="font-size:8px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:3px">Reps</div>
-                <div style="font-size:13px;font-weight:600;color:var(--white)">${reg?.reps_realizadas||"—"}</div>
-              </div>
-              <div style="background:var(--navy-lt);border-radius:3px;padding:8px 10px;">
-                <div style="font-size:8px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:3px">RPE</div>
-                <div style="font-size:13px;font-weight:600;color:var(--white)">${reg?.rpe_percibido||"—"}</div>
-              </div>
-              <div style="background:var(--navy-lt);border-radius:3px;padding:8px 10px;">
-                <div style="font-size:8px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:3px">Estado</div>
-                <div style="font-size:13px;font-weight:600;color:var(--white)">${reg?.estado_energia?reg.estado_energia+"/10":"—"}</div>
-              </div>
-            </div>
-
-            <!-- Athlete comment -->
-            ${hasComment?`<div style="background:rgba(240,236,227,0.05);border-left:3px solid rgba(201,168,76,0.5);padding:8px 12px;border-radius:0 3px 3px 0;margin-bottom:6px">
-              <div style="font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:3px">Comentario del atleta</div>
-              <div style="font-size:12px;color:var(--white);line-height:1.6;font-style:italic">"${reg.comentario_atleta}"</div>
-            </div>`:""}
-
-            <!-- Coach responses -->
-            ${comments.map(c=>`<div style="background:rgba(74,138,90,0.1);border-left:3px solid var(--success);padding:8px 12px;border-radius:0 3px 3px 0;margin-bottom:4px">
-              <div style="font-size:9px;letter-spacing:1px;color:var(--success);text-transform:uppercase;margin-bottom:3px">Tu respuesta · ${new Date(c.created_at).toLocaleDateString("es-AR")}</div>
-              <div style="font-size:12px;color:var(--white);line-height:1.6">${c.texto}</div>
-            </div>`).join("")}
-
-            <!-- Reply box - show if athlete commented and not yet replied -->
-            ${hasComment&&!responded&&reg?`<div style="display:flex;gap:8px;margin-top:6px;">
-              <input class="fi" type="text" id="fb-reply-${reg.id}" placeholder="Escribí tu respuesta..." style="flex:1;font-size:12px;padding:7px 10px">
-              <button class="btn btn-primary btn-sm" onclick="sendFeedback('${reg.id}','${atletaId}','${ej.id}','${atletaId}','${planId}','${week}')">Enviar</button>
-            </div>`:""}
-
-          </div>`;
-        }
-        html+=`</div></div>`;
-      }
-      html+=`</div>`;
-    }
-
-    container.innerHTML=html||'<div class="empty">No hay ejercicios en este plan.</div>';
-  }catch(e){container.innerHTML='<div class="empty">Error al cargar.</div>';console.error(e);}
-}
-
-
-async function sendFeedback(rid, aid, eid, atletaId, planId, week){
-  const t=document.getElementById("fb-reply-"+rid)?.value.trim();
-  if(!t) return;
-  try{
-    await sb("comentarios_entrenador","POST",{registro_id:rid,atleta_id:aid,ejercicio_id:eid,texto:t});
-    // Reload the week view
-    loadFeedbackWeek(atletaId, planId, week);
-  }catch(e){alert("Error: "+e.message);}
-}
-
-async function loadAthleteView(){
-  const el=document.getElementById("athlete-content");
-  try{
-    const planes=await sb("planes?atleta_id=eq."+currentAthlete.id+"&order=created_at.desc");
-    const plan=planes.find(p=>p.activo)||planes[0];
-    if(!plan){
-      el.innerHTML=`<div style="padding:60px 20px;text-align:center">
-        <div style="font-family:'Cormorant Garamond',serif;font-size:26px;margin-bottom:8px">Hola, <em style="color:var(--gold-lt)">${currentAthlete.nombre}</em></div>
-        <div style="font-size:13px;color:var(--dim)">Tu entrenador está preparando tu plan. Volvé pronto.</div>
-      </div>`;
-      return;
-    }
-
-    // Determine which week to show
-    // Get current active microciclo from plan
-    const activeMicro=plan.microciclo_activo||plan.microciclo||1;
-    const activeSem=plan.semana_activa||plan.semana||"A";
-    const activeFase=plan.fase_actual||plan.fase||"F1";
-    // Get days for current microciclo, semana A (the structure is the same for A and B)
-    // Try with microciclo filter first
-    let diasToShow=[];
-    try{
-      const filtered=await sb("plan_dias?plan_id=eq."+plan.id+"&microciclo=eq."+activeMicro+"&semana=eq.A&order=orden");
-      if(filtered.length>0){
-        diasToShow=filtered;
-      } else {
-        // Try without semana filter (for older plans)
-        const filtered2=await sb("plan_dias?plan_id=eq."+plan.id+"&microciclo=eq."+activeMicro+"&order=orden");
-        if(filtered2.length>0){
-          diasToShow=filtered2;
-        } else {
-          // Final fallback: all days (very old plans without microciclo column)
-          diasToShow=await sb("plan_dias?plan_id=eq."+plan.id+"&order=orden&limit=20");
-        }
-      }
-    }catch(e){
-      diasToShow=await sb("plan_dias?plan_id=eq."+plan.id+"&order=orden&limit=20");
-    }
-    if(!diasPlan.length){
-      el.innerHTML=`<div style="padding:60px 20px;text-align:center">
-        <div style="font-family:'Cormorant Garamond',serif;font-size:26px;margin-bottom:8px">Hola, <em style="color:var(--gold-lt)">${currentAthlete.nombre}</em></div>
-        <div style="font-size:13px;color:var(--dim)">Tu entrenador está configurando tu plan. Volvé en unos minutos.</div>
-      </div>`;
-      return;
-    }
-
-    // Check completed days for each week
-    const compA=await sb("dias_completados?atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq.A&select=dia_id");
-    const compB=await sb("dias_completados?atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq.B&select=dia_id");
-    const compAIds=compA.map(x=>x.dia_id);
-    const compBIds=compB.map(x=>x.dia_id);
-    const allADone=diasToShow.every(d=>compAIds.includes(d.id));
-    const allBDone=diasToShow.every(d=>compBIds.includes(d.id));
-
-    // Decide active week
-    let activeWeek="A";
-    if(allADone) activeWeek="B";
-
-    const phaseColors={F1:"#4a7fa5",F2:"#5b9e8a",F3:"#c9a84c",F4:"#a57060"};
-    const phaseLabels={F1:"Ordenar",F2:"Construir",F3:"Intensificar",F4:"Consolidar"};
-
-    let html=`<div style="margin-bottom:16px">
-      <div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:300;margin-bottom:10px">
-        Hola, <em style="color:var(--gold-lt)">${currentAthlete.nombre}</em>
-      </div>
-      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
-        <button onclick="setAthleteWeek('A')" id="tab-week-A"
-          style="padding:7px 14px;border-radius:3px;border:1px solid;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all .2s;
-          background:${activeWeek==='A'?'var(--gold)':'transparent'};color:${activeWeek==='A'?'var(--navy)':'var(--dim)'};border-color:${activeWeek==='A'?'var(--gold)':'rgba(240,236,227,0.2)'}">
-          Semana A ${allADone?'✓':''}
-        </button>
-        <button onclick="setAthleteWeek('B')" id="tab-week-B"
-          style="padding:7px 14px;border-radius:3px;border:1px solid;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all .2s;
-          ${allADone?'background:'+(activeWeek==='B'?'var(--gold)':'transparent')+';color:'+(activeWeek==='B'?'var(--navy)':'var(--dim)')+';border-color:'+(activeWeek==='B'?'var(--gold)':'rgba(240,236,227,0.2)'):'opacity:0.3;cursor:not-allowed;background:transparent;color:var(--dim);border-color:rgba(240,236,227,0.1)'}">
-          Semana B ${allBDone?'✓':'🔒'}
-        </button>
-        <button onclick="showAthleteHistory()" id="tab-history"
-          style="padding:7px 14px;border-radius:3px;border:1px solid rgba(240,236,227,0.2);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;background:transparent;color:var(--dim)">
-          📋 Historial
-        </button>
-      </div>
-      <div id="athlete-week-content"></div>
-      <div id="athlete-history-content" style="display:none"></div>
-    </div>`;
-
-    el.innerHTML=html;
-
-    // Store plan data globally for week switching
-    window._athletePlan={plan, diasPlan:diasToShow, compAIds, compBIds, allADone,
-      activeMicro, activeSem, activeFase};
-    renderAthleteWeek(activeWeek);
-
-  }catch(e){
-    el.innerHTML=`<div style="padding:40px;text-align:center;color:var(--dim)">Error al cargar. <button onclick="loadAthleteView()" class="btn btn-secondary btn-sm" style="margin-left:8px">Reintentar</button></div>`;
-    console.error(e);
-  }
-}
-
-function setAthleteWeek(week){
-  const p=window._athletePlan;
-  if(!p) return;
-  if(week==='B'&&!p.allADone) return; // locked
-  renderAthleteWeek(week);
-  // Update tab styles
-  ['A','B'].forEach(w=>{
-    const btn=document.getElementById("tab-week-"+w);
-    if(!btn) return;
-    const isActive=w===week;
-    const locked=w==='B'&&!p.allADone;
-    btn.style.background=isActive?'var(--gold)':'transparent';
-    btn.style.color=isActive?'var(--navy)':locked?'var(--dim)':'var(--dim)';
-    btn.style.borderColor=isActive?'var(--gold)':'rgba(240,236,227,0.2)';
-  });
-}
-
-async function renderAthleteWeek(week){
-  const p=window._athletePlan;
-  if(!p) return;
-  const {plan, diasPlan, compAIds, compBIds}=p;
-  const container=document.getElementById("athlete-week-content");
-  if(!container) return;
-
-  const compIds=week==='A'?compAIds:compBIds;
-  container.innerHTML='<div style="color:var(--dim);font-size:12px;padding:20px 0">Cargando...</div>';
-
-  let html="";
-  for(const dia of diasPlan){
-    const isDone=compIds.includes(dia.id);
-    const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&order=orden");
-
-    // Get first exercise of this day to use for checkin lookup
-    const firstBloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&order=orden&limit=1");
-    let checkinDone=false,checkinValue=null;
-    if(firstBloques.length){
-      const firstEjs=await sb("plan_ejercicios?bloque_id=eq."+firstBloques[0].id+"&order=orden&limit=1");
-      if(firstEjs.length){
-        const cRegs=await sb("registros?ejercicio_id=eq."+firstEjs[0].id+"&atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq."+week+"&estado_energia=not.is.null&select=estado_energia&limit=1");
-        if(cRegs.length){checkinDone=true;checkinValue=cRegs[0].estado_energia;}
-      }
-    }
-
-    html+=`<div class="day-card" style="margin-bottom:10px;${isDone?'opacity:0.75':''}">
-      <div class="day-header" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="day-num" style="${isDone?'background:var(--success)':'background:var(--gold)'}">${isDone?'✓':dia.orden}</div>
-          <div><div class="day-name">${dia.label}</div><div class="day-desc">${dia.descripcion||""}</div></div>
-        </div>
-        ${checkinDone?`<div style="font-size:10px;color:var(--dim)">Estado inicial: <span style="color:var(--gold);font-weight:700">${checkinValue}/10</span></div>`:""}
-      </div>
-      ${!checkinDone&&!isDone?`
-      <div id="checkin-${dia.id}" style="padding:20px 16px;border-bottom:1px solid rgba(240,236,227,0.08);background:rgba(201,168,76,0.04)">
-        <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:300;color:var(--white);margin-bottom:4px">Antes de arrancar —</div>
-        <div style="font-size:12px;color:var(--dim);margin-bottom:16px;line-height:1.6">Tomá un segundo. ¿Cómo llegás hoy energéticamente?</div>
-        <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;">
-          ${[1,2,3,4,5,6,7,8,9,10].map(n=>`
-            <button onclick="selectCheckin('${dia.id}',${n})" id="cin-${dia.id}-${n}"
-              style="width:38px;height:38px;border-radius:50%;border:2px solid rgba(240,236,227,0.15);background:transparent;color:var(--dim);font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s">
-              ${n}
-            </button>`).join("")}
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <button id="checkin-btn-${dia.id}" onclick="confirmCheckin('${dia.id}','${week}','${planId}')"
-            disabled style="opacity:0.4;transition:opacity .2s;background:var(--gold);color:var(--navy);border:none;padding:9px 16px;border-radius:3px;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:not-allowed">
-            Comenzar entrenamiento →
-          </button>
-          <span id="checkin-sel-${dia.id}" style="font-size:11px;color:var(--dim)"></span>
-        </div>
-      </div>
-      <div id="exs-${dia.id}" style="display:none">`
-      :`<div id="exs-${dia.id}">`}
-    `
-
-    for(const bloque of bloques){
-      const ejercicios=await sb("plan_ejercicios?bloque_id=eq."+bloque.id+"&order=orden");
-      const c=PC[bloque.tipo]||"#607080";
-      html+=`<div class="block open" style="border-left-color:${c}">
-        <div class="block-header" onclick="this.closest('.block').classList.toggle('open')">
-          <span class="block-badge" style="color:${c};border-color:${c}40;background:${c}15">${bloque.badge}</span>
-          <span class="block-type-lbl">${bloque.tipo}${bloque.nota?" · "+bloque.nota:""}</span>
-          <span class="block-chevron">↓</span>
-        </div>
-        <div class="block-body">`;
-
-      for(const ej of ejercicios){
-        const regs=await sb("registros?ejercicio_id=eq."+ej.id+"&atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq."+week+"&order=created_at.desc&limit=1");
-        const reg=regs[0]||null;
-        const comments=reg?await sb("comentarios_entrenador?registro_id=eq."+reg.id+"&order=created_at.asc"):[];
-        const hasUnread=comments.length===0&&reg?.comentario_atleta;
-
-        html+=`<div class="registro-card" style="${hasUnread?'border-color:rgba(201,168,76,0.3)':''}">
-          <div class="reg-header" onclick="this.nextElementSibling.classList.toggle('open')">
-            <div style="flex:1">
-              <div class="reg-ex-name">${ej.nombre}${hasUnread?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);margin-left:6px;vertical-align:middle"></span>':''}</div>
-              <div style="font-size:10px;color:var(--dim);margin-top:2px">
-                ${ej.series}×${ej.reps}${ej.rpe?" · "+ej.rpe:""}${ej.rir?" · "+ej.rir:""}
-                ${ej.video_url?` · <a href="${ej.video_url}" target="_blank" style="color:var(--gold);text-decoration:none">▶ Video</a>`:""}
-              </div>
-            </div>
-            <span style="font-size:16px;color:${reg?"var(--success)":"var(--dim)"}">${reg?"✓":"○"}</span>
-          </div>
-          <div class="reg-body ${reg?"open":""}">
-            <div class="reg-grid">
-              <div class="fg"><label class="fl">Peso utilizado</label>
-                <input class="fi" type="text" id="w-${ej.id}-${week}" value="${reg?.peso_utilizado||""}" placeholder="ej: 80kg"></div>
-              <div class="fg"><label class="fl">Reps realizadas</label>
-                <input class="fi" type="text" id="r-${ej.id}-${week}" value="${reg?.reps_realizadas||""}" placeholder="ej: 8/8/7"></div>
-              <div class="fg"><label class="fl">RPE percibido</label>
-                <input class="fi" type="text" id="p-${ej.id}-${week}" value="${reg?.rpe_percibido||""}" placeholder="ej: 8.5"></div>
-              <!-- Estado se registra al inicio de la sesión -->
-            </div>
-            <div class="fg" style="margin-bottom:8px">
-              <label class="fl">Comentarios / sensaciones</label>
-              <textarea class="ftextarea" id="c-${ej.id}-${week}" placeholder="¿Cómo se sintió? ¿Qué limitó? ¿Alguna molestia?">${reg?.comentario_atleta||""}</textarea>
-            </div>
-            ${comments.length>0?`<div style="margin-bottom:8px">
-              ${comments.map(cm=>`<div class="feedback-box" style="margin-bottom:5px">
-                <div class="feedback-label">💬 Tu entrenador</div>
-                <div class="feedback-text">${cm.texto}</div>
-              </div>`).join("")}
-            </div>`:""}
-            <div style="display:flex;align-items:center;gap:8px;">
-              <button class="btn btn-primary btn-sm" onclick="saveReg('${ej.id}','${week}','${reg?.id||""}')">Guardar</button>
-              <span class="saved-indicator" id="si-${ej.id}-${week}">✓ Guardado</span>
-            </div>
-          </div>
-        </div>`;
-      }
-      html+=`</div></div>`;
-    }
-
-    // Day completion checkbox
-    html+=`<div style="padding:12px 16px;border-top:1px solid rgba(240,236,227,0.06);display:flex;align-items:center;gap:10px;">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;${isDone?'opacity:0.6':''}">
-        <input type="checkbox" ${isDone?"checked":""} ${isDone?"disabled":""}
-          onchange="markDayDone('${dia.id}','${week}',this.checked,'${plan.id}')"
-          style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer">
-        <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${isDone?'var(--success)':'var(--dim)'}">
-          ${isDone?"✓ Entrenamiento completado":"Marcar como completado"}
-        </span>
-      </label>
-    </div>
-    </div></div>`;
-  }
-
-  // Show next week message if both done
-  if(week==='B'&&p.allADone){
-    const compBIds2=await sb("dias_completados?atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq.B&select=dia_id");
-    const allBDone=diasPlan.every(d=>compBIds2.map(x=>x.dia_id).includes(d.id));
-    if(allBDone){
-      const p=window._athletePlan;
-      const nextMicro=p.activeMicro+1;
-      const phaseMap={F1:2,F2:4,F3:4,F4:3}; // F1:4sem, F2:8sem, F3:8sem, F4:6sem → microciclos de 2 sem c/u
-      const maxMicro=phaseMap[p.activeFase]||4;
-      const isLastMicro=nextMicro>maxMicro;
-      html+=`<div style="text-align:center;padding:28px 20px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.2);border-radius:4px;margin-top:8px">
-        <div style="font-size:24px;margin-bottom:8px">🎯</div>
-        <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:var(--gold-lt);margin-bottom:6px">
-          ¡Microciclo ${p.activeMicro} completado!
-        </div>
-        <div style="font-size:12px;color:var(--dim);line-height:1.7;max-width:320px;margin:0 auto">
-          ${isLastMicro
-            ? "Completaste toda la fase "+p.activeFase+". Tu entrenador está preparando la siguiente etapa."
-            : "Las semanas "+(nextMicro*2-1)+"-"+(nextMicro*2)+" estarán disponibles pronto.<br>Tu entrenador está revisando tus registros."}
-        </div>
-      </div>`;
-    }
-  }
-
-  container.innerHTML=html;
-}
-
-async function markDayDone(diaId, week, checked, planId){
-  try{
-    if(checked){
-      await sb("dias_completados","POST",{dia_id:diaId,atleta_id:currentAthlete.id,semana_tipo:week});
-    } else {
-      await sb("dias_completados?dia_id=eq."+diaId+"&atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq."+week,"DELETE");
-    }
-    // Reload to check if all days done
-    await loadAthleteView();
-  }catch(e){
-    // If duplicate, ignore
-    if(!e.message.includes("duplicate")) console.error(e);
-    await loadAthleteView();
-  }
-}
-
-async function showAthleteHistory(){
-  const histEl=document.getElementById("athlete-history-content");
-  const weekEl=document.getElementById("athlete-week-content");
-  if(!histEl||!weekEl) return;
-
-  // Toggle
-  if(histEl.style.display!=="none"){
-    histEl.style.display="none";weekEl.style.display="block";return;
-  }
-  weekEl.style.display="none";
-  histEl.style.display="block";
-  histEl.innerHTML='<div style="color:var(--dim);font-size:12px;padding:20px 0">Cargando historial...</div>';
-
-  try{
-    const regs=await sb("registros?atleta_id=eq."+currentAthlete.id+"&order=fecha.desc,created_at.desc&select=*,plan_ejercicios(nombre,plan_bloques(badge,tipo,plan_dias(label,planes(fase,microciclo,semana))))");
-
-    if(!regs.length){
-      histEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--dim)">Todavía no hay entrenamientos registrados.</div>';
-      return;
-    }
-
-    // Group by date
-    const byDate={};
-    regs.forEach(r=>{
-      const key=r.fecha;
-      if(!byDate[key]) byDate[key]=[];
-      byDate[key].push(r);
-    });
-
-    let html=`<div style="margin-bottom:12px;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase">${regs.length} registros · ${Object.keys(byDate).length} sesiones</div>`;
-
-    Object.entries(byDate).forEach(([fecha,rs])=>{
-      const ex=rs[0];
-      const fase=ex?.plan_ejercicios?.plan_bloques?.plan_dias?.planes?.fase||"";
-      const micro=ex?.plan_ejercicios?.plan_bloques?.plan_dias?.planes?.microciclo||"";
-      const sem=ex?.plan_ejercicios?.plan_bloques?.plan_dias?.planes?.semana||"";
-      const dia=ex?.plan_ejercicios?.plan_bloques?.plan_dias?.label||"";
-
-      html+=`<div class="card" style="margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;gap:6px">
-          <div style="font-size:13px;font-weight:600">${new Date(fecha+"T12:00:00").toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"})}</div>
-          <div style="font-size:10px;color:var(--gold);letter-spacing:1px">${fase?fase+" · Micro "+micro+" · Sem "+sem:""} ${dia}</div>
-        </div>
-        <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
-          <thead>
-            <tr style="border-bottom:1px solid rgba(240,236,227,0.1)">
-              <th style="text-align:left;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">Ejercicio</th>
-              <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">Peso</th>
-              <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">Reps</th>
-              <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">RPE</th>
-              <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rs.map(r=>`<tr style="border-bottom:1px solid rgba(240,236,227,0.05)">
-              <td style="padding:6px 8px;color:var(--white);font-weight:500">${r.plan_ejercicios?.nombre||"—"}</td>
-              <td style="padding:6px 8px;text-align:center;color:var(--gold-lt);font-weight:600">${r.peso_utilizado||"—"}</td>
-              <td style="padding:6px 8px;text-align:center;color:var(--dim)">${r.reps_realizadas||"—"}</td>
-              <td style="padding:6px 8px;text-align:center;color:var(--dim)">${r.rpe_percibido||"—"}</td>
-              <td style="padding:6px 8px;text-align:center;color:var(--dim)">${r.estado_energia?r.estado_energia+"/10":"—"}</td>
-            </tr>
-            ${r.comentario_atleta?`<tr><td colspan="5" style="padding:4px 8px 8px;font-size:10px;color:var(--dim);font-style:italic;border-bottom:1px solid rgba(240,236,227,0.05)">"${r.comentario_atleta}"</td></tr>`:""}
-            `).join("")}
-          </tbody>
-        </table>
-        </div>
-      </div>`;
-    });
-
-    histEl.innerHTML=html;
-  }catch(e){
-    histEl.innerHTML='<div style="color:var(--danger);padding:20px">Error al cargar historial.</div>';
-    console.error(e);
-  }
-}
-async function saveReg(ejId,sem,existId){
-  const key=ejId+"-"+sem;
-  const data={ejercicio_id:ejId,atleta_id:currentAthlete.id,semana_tipo:sem,
-    peso_utilizado:document.getElementById("w-"+key)?.value.trim()||null,
-    reps_realizadas:document.getElementById("r-"+key)?.value.trim()||null,
-    rpe_percibido:document.getElementById("p-"+key)?.value.trim()||null,
-    // estado_energia is registered at session start (check-in)
-    comentario_atleta:document.getElementById("c-"+key)?.value.trim()||null,
-    fecha:new Date().toISOString().split("T")[0]
-  };
-  try{
-    if(existId) await sb("registros?id=eq."+existId,"PATCH",data);
-    else await sb("registros","POST",data);
-    const ind=document.getElementById("si-"+key);
-    if(ind){ind.classList.add("show");setTimeout(()=>ind.classList.remove("show"),2000);}
-  }catch(e){alert("Error al guardar: "+e.message);console.error(e);}
-}
-
-function showShareLink(token,nombre){
-  const link=window.location.origin+window.location.pathname+"?t="+token;
-  document.getElementById("share-link-text").textContent=link;
-  document.getElementById("modal-share").classList.add("open");
-}
-
-function copyShareLink(){
-  navigator.clipboard.writeText(document.getElementById("share-link-text").textContent).then(()=>{
-    const b=event.target;b.textContent="✓ Copiado!";setTimeout(()=>b.textContent="📋 Copiar",2000);
-  });
-}
-
-function coachTab(tab){
-  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
-  document.querySelectorAll(".tab-btn").forEach(t=>t.classList.remove("active"));
-  const vm={atletas:"view-atletas","nuevo-plan":"view-nuevo-plan",feedback:"view-feedback","atleta-detail":"view-atleta-detail"};
-  const tm={atletas:0,"nuevo-plan":1,feedback:2};
-  document.getElementById(vm[tab])?.classList.add("active");
-  if(tm[tab]!==undefined)document.querySelectorAll(".tab-btn")[tm[tab]]?.classList.add("active");
-  if(tab==="nuevo-plan"){
-    populateAthleteSelect();
-    setTimeout(()=>{updateMicroOptions();updateIntPreview();renderVariantSelector();},50);
-  }
-  if(tab==="feedback")loadFeedback();
-}
-
-async function deleteAthlete(id, nombre){
-  if(!confirm("¿Eliminar a "+nombre+"? Se borrarán todos sus planes, ejercicios y registros. Esta acción no se puede deshacer.")) return;
-  try{
-    // 1. Get all plans
-    const planes=await sb("planes?atleta_id=eq."+id+"&select=id");
     for(const plan of planes){
-      // 2. Get all dias
-      const dias=await sb("plan_dias?plan_id=eq."+plan.id+"&select=id");
-      for(const dia of dias){
-        // 3. Get all bloques
-        const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&select=id");
-        for(const bloque of bloques){
-          // 4. Delete ejercicios → registros → comentarios handled by cascade
-          await sb("plan_ejercicios?bloque_id=eq."+bloque.id,"DELETE");
-        }
-        await sb("plan_bloques?dia_id=eq."+dia.id,"DELETE");
+      // Get all dias for this plan
+      const dias=await sb("plan_dias?plan_id=eq."+plan.id+"&order=microciclo,semana,orden");
+      if(!dias.length) continue;
+
+      // Group dias by microciclo+semana
+      const groups={};
+      dias.forEach(d=>{
+        const key=(d.microciclo||1)+"-"+(d.semana||"A");
+        if(!groups[key]) groups[key]={microciclo:d.microciclo||1,semana:d.semana||"A",dias:[]};
+        groups[key].dias.push(d);
+      });
+
+      // For each microciclo+semana group
+      for(const [key,group] of Object.entries(groups)){
+        const diaIds=group.dias.map(d=>d.id);
+        const bloques=await sb("plan_bloques?dia_id=in.("+diaIds.join(",")+")"+"&order=orden");
+        const bloqueIds=bloques.map(b=>b.id);
+        if(!bloqueIds.length) continue;
+
+        const ejercicios=await sb("plan_ejercicios?bloque_id=in.("+bloqueIds.join(",")+")"+"&order=orden");
+        const ejIds=ejercicios.map(e=>e.id);
+        if(!ejIds.length) continue;
+
+        const registros=await sb("registros?ejercicio_id=in.("+ejIds.join(",")+")"
+          +"&atleta_id=eq."+atletaId
+          +"&semana_tipo=eq."+group.semana
+          +"&order=fecha.desc,created_at.desc");
+
+        // Only show if there are registros
+        if(!registros.length) continue;
+
+        const regByEj={};
+        registros.forEach(r=>{ if(!regByEj[r.ejercicio_id]) regByEj[r.ejercicio_id]=r; });
+
+        const ejByBloque={};
+        ejercicios.forEach(e=>{ if(!ejByBloque[e.bloque_id]) ejByBloque[e.bloque_id]=[]; ejByBloque[e.bloque_id].push(e); });
+
+        const bloquesByDia={};
+        bloques.forEach(b=>{ if(!bloquesByDia[b.dia_id]) bloquesByDia[b.dia_id]=[]; bloquesByDia[b.dia_id].push(b); });
+
+        // Check completion
+        const compDias=await sb("dias_completados?atleta_id=eq."+atletaId+"&semana_tipo=eq."+group.semana+"&dia_id=in.("+diaIds.join(",")+")&select=dia_id");
+        const compIds=compDias.map(x=>x.dia_id);
+        const allDone=diaIds.every(id=>compIds.includes(id));
+
+        const fase=plan.fase||"Libre";
+        const pc=PHASE_COLORS[fase]||"var(--gold)";
+        const groupId="hg-"+atletaId+"-"+plan.id+"-"+key;
+        const fecha=registros[0]?.fecha?new Date(registros[0].fecha+"T12:00:00").toLocaleDateString("es-AR",{day:"numeric",month:"short",year:"numeric"}):"—";
+
+        html+=`
+        <div style="margin-bottom:6px;border:1px solid rgba(240,236,227,0.08);border-radius:4px;overflow:hidden">
+          <!-- Collapsible header -->
+          <div onclick="toggleHistorialGroup('${groupId}')" style="padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;background:rgba(240,236,227,0.03);user-select:none;">
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:12px;font-weight:700;color:${pc}">${fase}</span>
+                <span style="font-size:11px;color:var(--white);font-weight:600">Micro ${group.microciclo} · Sem ${group.semana}</span>
+                <span style="font-size:10px;color:var(--dim)">${fecha}</span>
+                ${allDone?'<span style="font-size:9px;color:var(--success);font-weight:700;letter-spacing:1px">✓ COMPLETADO</span>':''}
+              </div>
+              <div style="font-size:10px;color:var(--dim);margin-top:2px">${registros.length} registros · ${group.dias.length} día${group.dias.length===1?"":"s"}</div>
+            </div>
+            <span id="${groupId}-chevron" style="color:var(--dim);font-size:12px;transition:transform .2s">↓</span>
+          </div>
+
+          <!-- Collapsible content -->
+          <div id="${groupId}" style="display:none;padding:0 14px 14px">
+            ${group.dias.map(dia=>{
+              const dBloques=bloquesByDia[dia.id]||[];
+              const dRegs=dBloques.flatMap(b=>ejByBloque[b.id]||[]).map(e=>regByEj[e.id]).filter(Boolean);
+              if(!dRegs.length) return "";
+
+              // Get estado inicial
+              const firstBloq=dBloques[0];
+              const firstEj=firstBloq?(ejByBloque[firstBloq.id]||[])[0]:null;
+              const firstReg=firstEj?regByEj[firstEj.id]:null;
+              const estado=firstReg?.estado_energia;
+
+              return `
+              <div style="margin-top:12px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(240,236,227,0.06)">
+                  <span style="font-size:12px;font-weight:700;color:var(--white)">${dia.label}</span>
+                  <span style="font-size:10px;color:var(--dim)">${dia.descripcion||""}</span>
+                  ${estado?`<span style="font-size:10px;color:var(--gold);margin-left:auto">Estado inicial: <strong>${estado}/10</strong></span>`:""}
+                </div>
+
+                <!-- Exercises table -->
+                <div style="overflow-x:auto">
+                  <table style="width:100%;border-collapse:collapse;font-size:11px">
+                    <thead>
+                      <tr style="border-bottom:1px solid rgba(240,236,227,0.1)">
+                        <th style="text-align:left;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">Ejercicio</th>
+                        <th style="text-align:left;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">Prescripto</th>
+                        <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">Peso</th>
+                        <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">Reps</th>
+                        <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;white-space:nowrap">RPE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${dBloques.map(b=>{
+                        const ejs=ejByBloque[b.id]||[];
+                        const c=PC[b.tipo]||"#607080";
+                        return ejs.map((e,ei)=>{
+                          const r=regByEj[e.id];
+                          return `
+                          ${ei===0?`<tr><td colspan="5" style="padding:6px 8px 2px;font-size:8px;font-weight:700;letter-spacing:2px;color:${c};text-transform:uppercase">${b.badge} · ${b.tipo}</td></tr>`:""}
+                          <tr style="border-bottom:1px solid rgba(240,236,227,0.04)">
+                            <td style="padding:5px 8px;color:var(--white)">${e.nombre}</td>
+                            <td style="padding:5px 8px;color:var(--dim);font-size:10px;white-space:nowrap">${e.series||""}×${e.reps||""} ${e.rpe||e.rir||""}</td>
+                            <td style="padding:5px 8px;text-align:center;color:var(--gold-lt);font-weight:600">${r?.peso_utilizado||"—"}</td>
+                            <td style="padding:5px 8px;text-align:center;color:var(--dim)">${r?.reps_realizadas||"—"}</td>
+                            <td style="padding:5px 8px;text-align:center;color:var(--dim)">${r?.rpe_percibido||"—"}</td>
+                          </tr>
+                          ${r?.comentario_atleta?`<tr><td colspan="5" style="padding:3px 8px 6px 16px;font-size:10px;color:var(--dim);font-style:italic;border-bottom:1px solid rgba(240,236,227,0.04)">"${r.comentario_atleta}"</td></tr>`:""}
+                          `;
+                        }).join("");
+                      }).join("")}
+                    </tbody>
+                  </table>
+                </div>
+              </div>`;
+            }).join("")}
+          </div>
+        </div>`;
       }
-      await sb("plan_dias?plan_id=eq."+plan.id,"DELETE");
     }
-    // 5. Delete registros directos del atleta
-    await sb("registros?atleta_id=eq."+id,"DELETE");
-    await sb("comentarios_entrenador?atleta_id=eq."+id,"DELETE");
-    // 6. Delete planes
-    await sb("planes?atleta_id=eq."+id,"DELETE");
-    // 7. Finally delete athlete
-    await sb("atletas?id=eq."+id,"DELETE");
-    await loadAthletes();
-    coachTab("atletas");
-    alert("✓ Atleta eliminado correctamente");
+
+    container.innerHTML = html || '<div style="font-size:11px;color:var(--dim);padding:8px 0">No hay registros todavía.</div>';
+
   }catch(e){
-    alert("Error al eliminar: "+e.message);
+    container.innerHTML='<div style="font-size:11px;color:#d47070">Error al cargar historial.</div>';
     console.error(e);
   }
 }
+
+function toggleHistorialGroup(id){
+  const el=document.getElementById(id);
+  const chev=document.getElementById(id+"-chevron");
+  if(!el) return;
+  const open=el.style.display==="none";
+  el.style.display=open?"block":"none";
+  if(chev) chev.style.transform=open?"rotate(180deg)":"rotate(0deg)";
+}
+
 
 async function archiveAthlete(id, nombre, currentState){
   const action = currentState ? "archivar" : "reactivar";
