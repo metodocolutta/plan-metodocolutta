@@ -1164,7 +1164,15 @@ async function setupNewPlan(athleteId){
         if(nextMicro>maxMicro){nextMicro=1;const po=["F1","F2","F3","F4"];nextFase=po[po.indexOf(curFase)+1]||curFase;}
         const fe=document.getElementById("np-fase");const me=document.getElementById("np-micro");const se=document.getElementById("np-semana");
         if(fe) fe.value=nextFase;if(me) me.value=String(nextMicro);if(se) se.value="A";
-        const prevDias=await sb("plan_dias?plan_id=eq."+cur.id+"&microciclo=eq."+curMicro+"&semana=eq.A&order=orden");
+        // Get days from previous microciclo only
+        let prevDias=await sb("plan_dias?plan_id=eq."+cur.id+"&microciclo=eq."+curMicro+"&semana=eq.A&order=orden");
+        // If no results with microciclo filter, try to get the athlete's day count worth of days
+        if(!prevDias.length){
+          const allPrev=await sb("plan_dias?plan_id=eq."+cur.id+"&order=orden");
+          const diasPorSemana=parseInt(a?.dias_por_semana)||4;
+          // Take only the first N days (one microciclo worth)
+          prevDias=allPrev.slice(0, diasPorSemana);
+        }
         if(prevDias.length){
           planDays=[];
           for(const dia of prevDias){
@@ -1491,12 +1499,31 @@ async function loadAthleteView(){
     const activeMicro=plan.microciclo_activo||plan.microciclo||1;
     const activeSem=plan.semana_activa||plan.semana||"A";
     const activeFase=plan.fase_actual||plan.fase||"F1";
+    // Load ONLY days for current active microciclo
     let diasToShow=[];
     try{
-      const f1=await sb("plan_dias?plan_id=eq."+plan.id+"&microciclo=eq."+activeMicro+"&semana=eq.A&order=orden");
-      if(f1.length){diasToShow=f1;}
-      else{const f2=await sb("plan_dias?plan_id=eq."+plan.id+"&microciclo=eq."+activeMicro+"&order=orden");diasToShow=f2.length?f2:await sb("plan_dias?plan_id=eq."+plan.id+"&order=orden&limit=20");}
-    }catch(e){diasToShow=await sb("plan_dias?plan_id=eq."+plan.id+"&order=orden&limit=20");}
+      // First try: exact match microciclo + semana A
+      diasToShow=await sb("plan_dias?plan_id=eq."+plan.id+"&microciclo=eq."+activeMicro+"&semana=eq.A&order=orden");
+      // Second try: microciclo only (for older plans without semana column)
+      if(!diasToShow.length){
+        const f2=await sb("plan_dias?plan_id=eq."+plan.id+"&microciclo=eq."+activeMicro+"&order=orden");
+        // Only use if they're unique days (not duplicates from multiple semanas)
+        const uniqueDias=[];const seenOrden=new Set();
+        f2.forEach(d=>{if(!seenOrden.has(d.label)){seenOrden.add(d.label);uniqueDias.push(d);}});
+        diasToShow=uniqueDias;
+      }
+      // If still nothing AND this is a legacy plan (no microciclo column), get first N days
+      if(!diasToShow.length){
+        const allDias=await sb("plan_dias?plan_id=eq."+plan.id+"&order=orden");
+        // Only load if ALL days have microciclo=null (truly legacy)
+        const isLegacy=allDias.every(d=>!d.microciclo);
+        if(isLegacy){
+          // Get unique days by label (no duplicates)
+          const seen=new Set();
+          diasToShow=allDias.filter(d=>{if(seen.has(d.label))return false;seen.add(d.label);return true;});
+        }
+      }
+    }catch(e){console.error("diasToShow error:",e);}
     if(!diasToShow.length){el.innerHTML=`<div style="padding:60px 20px;text-align:center"><div style="font-family:'Cormorant Garamond',serif;font-size:26px;margin-bottom:8px">Hola, <em style="color:var(--gold-lt)">${currentAthlete.nombre}</em></div><div style="font-size:13px;color:var(--dim)">Tu entrenador está configurando tu plan.</div></div>`;return;}
     const compA=await sb("dias_completados?atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq.A&select=dia_id");
     const compB=await sb("dias_completados?atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq.B&select=dia_id");
