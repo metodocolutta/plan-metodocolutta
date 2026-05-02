@@ -1760,34 +1760,70 @@ async function activatePlan(planId,atletaId){
 }
 
 async function deletePlan(planId,atletaId){
-  if(!confirm("¿Borrar este plan?")) return;
+  if(!confirm("¿Borrar este plan? Se eliminarán todos sus días, ejercicios y registros.")) return;
   try{
-    const dias=await sb("planes?id=eq."+planId+"&select=id");
+    // Get all dias for this plan
+    const dias=await sb("plan_dias?plan_id=eq."+planId+"&select=id");
+    for(const dia of dias){
+      const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&select=id");
+      for(const bloque of bloques){
+        const ejs=await sb("plan_ejercicios?bloque_id=eq."+bloque.id+"&select=id");
+        for(const ej of ejs){
+          // Delete comentarios first (foreign key constraint)
+          await sb("comentarios_entrenador?ejercicio_id=eq."+ej.id,"DELETE");
+          // Delete registros for this ejercicio
+          const regs=await sb("registros?ejercicio_id=eq."+ej.id+"&select=id");
+          for(const reg of regs){
+            await sb("comentarios_entrenador?registro_id=eq."+reg.id,"DELETE");
+          }
+          await sb("registros?ejercicio_id=eq."+ej.id,"DELETE");
+        }
+        await sb("plan_ejercicios?bloque_id=eq."+bloque.id,"DELETE");
+      }
+      await sb("plan_bloques?dia_id=eq."+dia.id,"DELETE");
+    }
+    await sb("plan_dias?plan_id=eq."+planId,"DELETE");
     await sb("planes?id=eq."+planId,"DELETE");
     viewAthlete(atletaId);
-  }catch(e){alert("Error: "+e.message);}
+  }catch(e){alert("Error al borrar: "+e.message);console.error(e);}
 }
 
 async function deleteAthlete(id,nombre){
-  if(!confirm("¿Eliminar a "+nombre+"? Se borrarán todos sus datos.")) return;
+  if(!confirm("¿Eliminar a "+nombre+"? Se borrarán todos sus planes, ejercicios y registros.")) return;
   try{
+    // Delete in correct order respecting foreign keys
+    // 1. Get all planes
     const planes=await sb("planes?atleta_id=eq."+id+"&select=id");
     for(const plan of planes){
       const dias=await sb("plan_dias?plan_id=eq."+plan.id+"&select=id");
       for(const dia of dias){
         const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&select=id");
-        for(const bloque of bloques) await sb("plan_ejercicios?bloque_id=eq."+bloque.id,"DELETE");
+        for(const bloque of bloques){
+          const ejs=await sb("plan_ejercicios?bloque_id=eq."+bloque.id+"&select=id");
+          for(const ej of ejs){
+            // comentarios_entrenador references ejercicio_id - delete first
+            await sb("comentarios_entrenador?ejercicio_id=eq."+ej.id,"DELETE");
+          }
+          await sb("plan_ejercicios?bloque_id=eq."+bloque.id,"DELETE");
+        }
         await sb("plan_bloques?dia_id=eq."+dia.id,"DELETE");
       }
       await sb("plan_dias?plan_id=eq."+plan.id,"DELETE");
     }
+    // Delete registros and their comentarios
+    const regs=await sb("registros?atleta_id=eq."+id+"&select=id");
+    for(const reg of regs){
+      await sb("comentarios_entrenador?registro_id=eq."+reg.id,"DELETE");
+    }
     await sb("registros?atleta_id=eq."+id,"DELETE");
     await sb("comentarios_entrenador?atleta_id=eq."+id,"DELETE");
+    await sb("dias_completados?atleta_id=eq."+id,"DELETE");
     await sb("planes?atleta_id=eq."+id,"DELETE");
     await sb("atletas?id=eq."+id,"DELETE");
-    await loadAthletes();coachTab("atletas");
+    await loadAthletes();
+    coachTab("atletas");
     alert("✓ Atleta eliminado");
-  }catch(e){alert("Error: "+e.message);}
+  }catch(e){alert("Error al eliminar: "+e.message);console.error(e);}
 }
 
 async function togglePlanDetail(planId){
