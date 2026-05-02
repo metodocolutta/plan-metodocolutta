@@ -720,10 +720,10 @@ async function viewAthlete(id){
         <div style="padding:10px 0;border-bottom:1px solid rgba(240,236,227,0.05);">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <span style="font-size:12px;font-weight:700;color:${PHASE_COLORS[p.fase]||"var(--gold)"}">${p.fase} · ${PHASE_LABELS[p.fase]||""}</span>
-            <span style="font-size:11px;color:var(--dim)">Micro ${p.microciclo} · Sem ${p.semana} · ${new Date(p.created_at).toLocaleDateString("es-AR")}</span>
+            <span style="font-size:11px;color:var(--dim)">Micro ${p.microciclo_activo||p.microciclo} · Sem ${p.semana_activa||p.semana} · ${new Date(p.created_at).toLocaleDateString("es-AR")}</span>
             ${p.activo?'<span style="font-size:9px;color:var(--success);font-weight:700;letter-spacing:1px">ACTIVO</span>':""}
             <div style="margin-left:auto;display:flex;gap:6px;flex-shrink:0;">
-              ${!p.activo?`<button class="btn btn-ghost btn-sm" onclick="activatePlan('${p.id}','${a.id}')" style="display:inline-flex">✓ Activar</button>`:""}
+              ${p.activo?`<button class="btn btn-primary btn-sm" onclick="setupNewPlan('${a.id}')" style="display:inline-flex;margin-right:4px">+ Cargar próximo micro</button>`:""} ${!p.activo?`<button class="btn btn-ghost btn-sm" onclick="activatePlan('${p.id}','${a.id}')" style="display:inline-flex">✓ Activar</button>`:""}
               <button class="btn btn-ghost btn-sm" onclick="deletePlan('${p.id}','${a.id}')" style="display:inline-flex;color:#d47070">✕ Borrar</button>
             </div>
           </div>
@@ -858,6 +858,7 @@ function onAthleteChange(){
   if(intCard) intCard.style.display=isOneDay?"none":"block";
 
   setTimeout(()=>{
+    updateMicroOptions();
     if(!isOneDay) updateIntPreview();
     renderVariantSelector();
   },50);
