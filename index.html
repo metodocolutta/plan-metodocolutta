@@ -506,7 +506,6 @@ const DAY_TEMPLATES={
 
 let currentRole=null,currentAthlete=null,athletes=[],planDays=[],customEx={};
 
-const COACH_PASSWORD = "colutta2026"; // Cambiá esto por tu contraseña
 
 let tapCount=0, tapTimer=null;
 function handleLogoTap(){
@@ -1411,7 +1410,7 @@ async function renderAthleteWeek(week){
     html+=`<div class="day-card" style="margin-bottom:10px;${isDone?'opacity:0.75':''}">
       <div class="day-header" style="justify-content:space-between">
         <div style="display:flex;align-items:center;gap:10px">
-          <div class="day-num" style="${isDone?'background:var(--success)':\`background:var(--gold)\`}">${isDone?'✓':dia.orden}</div>
+          <div class="day-num" style="${isDone?'background:var(--success)':'background:var(--gold)'}">${isDone?'✓':dia.orden}</div>
           <div><div class="day-name">${dia.label}</div><div class="day-desc">${dia.descripcion||""}</div></div>
         </div>
         ${checkinDone?`<div style="font-size:10px;color:var(--dim)">Estado inicial: <span style="color:var(--gold);font-weight:700">${checkinValue}/10</span></div>`:""}
