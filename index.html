@@ -1341,6 +1341,8 @@ function confirmAddBlock(di){
 }
 
 async function savePlan(){
+  // If in edit mode, update existing plan instead of creating new
+  if(editMode){await _saveEditedPlan();return;}
   const aid=document.getElementById("np-atleta")?.value;if(!aid){alert("Seleccioná un atleta");return;}
   const int=getInt();
   const faseVal=document.getElementById("np-fase")?.value||"F1";
@@ -1965,11 +1967,8 @@ async function editPlan(planId, atletaId){
   setTimeout(()=>{updateMicroOptions();if(!isOneDay)updateIntPreview();renderDays();},80);
 }
 
-// Override savePlan to handle edit mode
-const _originalSavePlan=savePlan;
-async function savePlan(){
-  if(!editMode){await _originalSavePlan();return;}
-
+// Edit mode save function
+async function _saveEditedPlan(){
   // EDIT MODE: update existing records
   try{
     for(let di=0;di<planDays.length;di++){
@@ -2032,7 +2031,27 @@ async function savePlan(){
   }
 }
 
-// ── HISTORIAL ATLETA REORGANIZADO ────────────────────────
+// ── UTILITIES ────────────────────────────────────────────
+
+function closeModal(id){
+  const el=document.getElementById(id);
+  if(el) el.classList.remove("open");
+}
+
+function toggleHistorialGroup(id){
+  const el=document.getElementById(id);
+  const chev=document.getElementById(id+"-chevron");
+  if(!el) return;
+  const open=el.style.display==="none";
+  el.style.display=open?"block":"none";
+  if(chev) chev.style.transform=open?"rotate(180deg)":"rotate(0deg)";
+}
+
+// Modal overlay click to close
+document.querySelectorAll(".modal-overlay").forEach(m=>{
+  m.addEventListener("click",e=>{if(e.target===m)m.classList.remove("open");});
+});
+
 </script>
 </body>
 </html>
