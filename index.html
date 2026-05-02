@@ -179,7 +179,7 @@
         <div id="phase-controls" style="display:contents">
           <div class="fg"><label class="fl">Fase</label><select class="fs" id="np-fase" onchange="updateIntPreview();updateMicroOptions()"><option value="F1">F1 — Ordenar</option><option value="F2">F2 — Construir</option><option value="F3">F3 — Intensificar</option><option value="F4">F4 — Consolidar</option></select></div>
           <div class="fg" id="np-micro-wrap"><label class="fl">Microciclo</label><select class="fs" id="np-micro" onchange="updateIntPreview()"><option value="1">Sem 1–2</option><option value="2">Sem 3–4</option><option value="3">Sem 5–6</option><option value="4">Sem 7–8</option></select></div>
-          <div class="fg"><label class="fl">Semana</label><select class="fs" id="np-semana" onchange="updateIntPreview()"><option value="A">A — Instalar</option><option value="B">B — Responder</option></select></div>
+          <!-- Semana siempre A al crear - B reutiliza los mismos días --><input type="hidden" id="np-semana" value="A">
         </div>
       </div>
     </div>
@@ -1091,10 +1091,10 @@ function updateMicroOptions(){
   if(cur>opts.length) sel.value=String(opts.length);
 }
 
-function getInt(){
+function getInt(week){
   const ph=document.getElementById("np-fase")?.value||"F1";
   const mc=parseInt(document.getElementById("np-micro")?.value||1);
-  const wk=document.getElementById("np-semana")?.value||"A";
+  const wk=week||"A";
   return INT[ph]?.[mc]?.[wk]||INT.F2[1].A;
 }
 
@@ -1105,14 +1105,24 @@ function isOneDayPlan(){
 }
 
 function updateIntPreview(){
-  const i=getInt();
+  const iA=getInt("A");const iB=getInt("B");
   const el=document.getElementById("np-int-preview");if(!el)return;
   el.innerHTML=`
-    <span class="ipill" style="color:#4a7fa5;border-color:#4a7fa530;background:rgba(74,127,165,0.1)">📊 ${i.s} series</span>
-    <span class="ipill" style="color:#5b9e8a;border-color:#5b9e8a30;background:rgba(91,158,138,0.1)">🔢 ${i.r} reps</span>
-    <span class="ipill" style="color:#c9a84c;border-color:#c9a84c30;background:rgba(201,168,76,0.1)">⚡ ${i.rpe}</span>
-    <span class="ipill" style="color:#a57060;border-color:#a5706030;background:rgba(165,112,96,0.1)">🎯 ${i.rir}</span>
-    ${i.note?`<span class="ipill" style="color:var(--dim);border-color:rgba(240,236,227,0.1)">📝 ${i.note}</span>`:""}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <span style="font-size:9px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;font-weight:700">Sem A</span>
+      <span class="ipill" style="color:#4a7fa5;border-color:#4a7fa530;background:rgba(74,127,165,0.1)">📊 ${iA.s}s</span>
+      <span class="ipill" style="color:#5b9e8a;border-color:#5b9e8a30;background:rgba(91,158,138,0.1)">🔢 ${iA.r}</span>
+      <span class="ipill" style="color:#c9a84c;border-color:#c9a84c30;background:rgba(201,168,76,0.1)">⚡ ${iA.rpe}</span>
+      <span class="ipill" style="color:#a57060;border-color:#a5706030;background:rgba(165,112,96,0.1)">🎯 ${iA.rir}</span>
+      ${iA.note?`<span class="ipill" style="color:var(--dim);border-color:rgba(240,236,227,0.1)">📝 ${iA.note}</span>`:""}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;font-weight:700">Sem B</span>
+      <span class="ipill" style="color:#4a7fa5;border-color:#4a7fa520;background:rgba(74,127,165,0.06)">📊 ${iB.s}s</span>
+      <span class="ipill" style="color:#5b9e8a;border-color:#5b9e8a20;background:rgba(91,158,138,0.06)">🔢 ${iB.r}</span>
+      <span class="ipill" style="color:#c9a84c;border-color:#c9a84c20;background:rgba(201,168,76,0.06)">⚡ ${iB.rpe}</span>
+      <span class="ipill" style="color:#a57060;border-color:#a5706020;background:rgba(165,112,96,0.06)">🎯 ${iB.rir}</span>
+    </div>
   `;
   if(planDays.length) renderDays();
 }
@@ -1589,7 +1599,7 @@ async function renderAthleteWeek(week){
             <div class="reg-header" onclick="this.nextElementSibling.classList.toggle('open')">
               <div>
                 <div class="reg-ex-name">${ej.nombre}${hasComment&&!comments.length?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);margin-left:6px;vertical-align:middle"></span>':''}</div>
-                <div style="font-size:10px;color:var(--dim);margin-top:2px">${ej.series}×${ej.reps}${ej.rpe?" · "+ej.rpe:""}${ej.rir?" · "+ej.rir:""}${ej.video_url?` · <a href="${ej.video_url}" target="_blank" style="color:var(--gold);text-decoration:none">▶ Video</a>`:""}</div>
+                <div style="font-size:10px;color:var(--dim);margin-top:2px">${ej.series||""}×${ej.reps||""}${ej.rpe?" · "+ej.rpe:""}${ej.rir?" · "+ej.rir:""}${ej.video_url?` · <a href="${ej.video_url}" target="_blank" style="color:var(--gold);text-decoration:none">▶ Video</a>`:""}</div>
               </div>
               <span style="font-size:16px;color:${reg?"var(--success)":"var(--dim)"}">${reg?"✓":"○"}</span>
             </div>
