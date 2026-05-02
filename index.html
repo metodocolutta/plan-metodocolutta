@@ -1042,6 +1042,768 @@ async function confirmChangeCode(){
   }
 }
 
+function coachTab(tab){
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(t=>t.classList.remove("active"));
+  const vm={
+    "atletas":"view-atletas",
+    "nuevo-plan":"view-nuevo-plan",
+    "feedback":"view-feedback",
+    "atleta-detail":"view-atleta-detail"
+  };
+  const tm={"atletas":0,"nuevo-plan":1,"feedback":2};
+  document.getElementById(vm[tab])?.classList.add("active");
+  if(tm[tab]!==undefined) document.querySelectorAll(".tab-btn")[tm[tab]]?.classList.add("active");
+  if(tab==="nuevo-plan"){
+    populateAthleteSelect();
+    setTimeout(()=>{updateMicroOptions();updateIntPreview();renderVariantSelector();},50);
+  }
+  if(tab==="feedback") loadFeedback();
+}
+
+function openNewAthleteModal(){document.getElementById("modal-new-athlete").classList.add("open");}
+
+async function saveNewAthlete(){
+  const nombre=document.getElementById("na-nombre").value.trim();
+  if(!nombre){alert("El nombre es obligatorio");return;}
+  try{
+    await sb("atletas","POST",{nombre,email:document.getElementById("na-email").value.trim()||null,dias_por_semana:parseInt(document.getElementById("na-dias").value),notas:document.getElementById("na-notas").value.trim()||null});
+    closeModal("modal-new-athlete");
+    ["na-nombre","na-email","na-notas"].forEach(id=>document.getElementById(id).value="");
+    await loadAthletes();
+  }catch(e){alert("Error: "+e.message);}
+}
+
+const PHASE_MICROS={
+  F1:[{v:1,label:"Sem 1-2"},{v:2,label:"Sem 3-4"}],
+  F2:[{v:1,label:"Sem 1-2"},{v:2,label:"Sem 3-4"},{v:3,label:"Sem 5-6"},{v:4,label:"Sem 7-8"}],
+  F3:[{v:1,label:"Sem 1-2"},{v:2,label:"Sem 3-4"},{v:3,label:"Sem 5-6"},{v:4,label:"Sem 7-8"}],
+  F4:[{v:1,label:"Sem 1-2"},{v:2,label:"Sem 3-4"},{v:3,label:"Sem 5-6"}]
+};
+
+function updateMicroOptions(){
+  const fase=document.getElementById("np-fase")?.value||"F1";
+  const sel=document.getElementById("np-micro");
+  if(!sel) return;
+  const cur=parseInt(sel.value)||1;
+  const opts=PHASE_MICROS[fase]||PHASE_MICROS.F2;
+  sel.innerHTML=opts.map(o=>`<option value="${o.v}" ${o.v===cur&&o.v<=opts.length?"selected":""}>${o.label}</option>`).join("");
+  if(cur>opts.length) sel.value=String(opts.length);
+}
+
+function getInt(){
+  const ph=document.getElementById("np-fase")?.value||"F1";
+  const mc=parseInt(document.getElementById("np-micro")?.value||1);
+  const wk=document.getElementById("np-semana")?.value||"A";
+  return INT[ph]?.[mc]?.[wk]||INT.F2[1].A;
+}
+
+function isOneDayPlan(){
+  const id=document.getElementById("np-atleta")?.value;
+  const a=athletes.find(x=>x.id===id);
+  return parseInt(a?.dias_por_semana)===1;
+}
+
+function updateIntPreview(){
+  const i=getInt();
+  const el=document.getElementById("np-int-preview");if(!el)return;
+  el.innerHTML=`
+    <span class="ipill" style="color:#4a7fa5;border-color:#4a7fa530;background:rgba(74,127,165,0.1)">📊 ${i.s} series</span>
+    <span class="ipill" style="color:#5b9e8a;border-color:#5b9e8a30;background:rgba(91,158,138,0.1)">🔢 ${i.r} reps</span>
+    <span class="ipill" style="color:#c9a84c;border-color:#c9a84c30;background:rgba(201,168,76,0.1)">⚡ ${i.rpe}</span>
+    <span class="ipill" style="color:#a57060;border-color:#a5706030;background:rgba(165,112,96,0.1)">🎯 ${i.rir}</span>
+    ${i.note?`<span class="ipill" style="color:var(--dim);border-color:rgba(240,236,227,0.1)">📝 ${i.note}</span>`:""}
+  `;
+  if(planDays.length) renderDays();
+}
+
+function onAthleteChange(){
+  const id=document.getElementById("np-atleta")?.value;
+  if(!id) return;
+  const a=athletes.find(x=>x.id===id);
+  const isOneDay=parseInt(a?.dias_por_semana)===1;
+  const phaseCtrl=document.getElementById("phase-controls");
+  const intCard=document.getElementById("np-int-card");
+  if(phaseCtrl) phaseCtrl.style.display=isOneDay?"none":"contents";
+  if(intCard) intCard.style.display=isOneDay?"none":"block";
+  setTimeout(()=>{updateMicroOptions();if(!isOneDay)updateIntPreview();renderVariantSelector();},50);
+}
+
+async function setupNewPlan(athleteId){
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(t=>t.classList.remove("active"));
+  document.getElementById("view-nuevo-plan").classList.add("active");
+  document.querySelectorAll(".tab-btn")[1]?.classList.add("active");
+  populateAthleteSelect();
+  if(athleteId){const s=document.getElementById("np-atleta");if(s)s.value=athleteId;}
+  const id=athleteId||document.getElementById("np-atleta")?.value;
+  const a=athletes.find(x=>x.id===id);
+  const isOneDay=parseInt(a?.dias_por_semana)===1;
+  const banner=document.getElementById("np-continuation-banner");
+  if(banner) banner.style.display="none";
+  if(!isOneDay&&id){
+    try{
+      const activos=await sb("planes?atleta_id=eq."+id+"&activo=eq.true&select=id,fase,microciclo,semana,microciclo_activo,semana_activa,fase_actual&limit=1");
+      if(activos.length){
+        const cur=activos[0];
+        const curMicro=cur.microciclo_activo||cur.microciclo||1;
+        const curFase=cur.fase_actual||cur.fase||"F1";
+        const phaseMap={F1:2,F2:4,F3:4,F4:3};
+        const maxMicro=phaseMap[curFase]||4;
+        let nextMicro=curMicro+1,nextFase=curFase;
+        if(nextMicro>maxMicro){nextMicro=1;const po=["F1","F2","F3","F4"];nextFase=po[po.indexOf(curFase)+1]||curFase;}
+        const fe=document.getElementById("np-fase");const me=document.getElementById("np-micro");const se=document.getElementById("np-semana");
+        if(fe) fe.value=nextFase;if(me) me.value=String(nextMicro);if(se) se.value="A";
+        const prevDias=await sb("plan_dias?plan_id=eq."+cur.id+"&microciclo=eq."+curMicro+"&semana=eq.A&order=orden");
+        if(prevDias.length){
+          planDays=[];
+          for(const dia of prevDias){
+            const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&order=orden");
+            const dayBlocks=[];
+            for(const b of bloques){
+              const ejs=await sb("plan_ejercicios?bloque_id=eq."+b.id+"&order=orden");
+              dayBlocks.push({type:b.tipo,badge:b.badge,note:b.nota||"",exercises:ejs.map(e=>({name:e.nombre,custom:"",videoUrl:e.video_url||"",overrideInt:false,series:String(e.series||""),reps:e.reps||"",rpeRir:e.rpe||e.rir||""}))});
+            }
+            planDays.push({label:dia.label,desc:dia.descripcion||"",blocks:dayBlocks});
+          }
+          if(banner){banner.style.display="block";banner.innerHTML=`<div style="padding:10px 14px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:3px;font-size:11px;color:var(--gold)">📋 Pre-cargado desde ${curFase} · Micro ${curMicro} — revisá y ajustá para ${nextFase} · Micro ${nextMicro}</div>`;}
+          setTimeout(()=>{updateMicroOptions();if(!isOneDay){const pc=document.getElementById("phase-controls");const ic=document.getElementById("np-int-card");if(pc)pc.style.display="contents";if(ic)ic.style.display="block";updateIntPreview();}renderDays();},80);
+          return;
+        }
+      }
+    }catch(e){console.error("prefill error:",e);}
+  }
+  const tmpl=DAY_TEMPLATES[parseInt(a?.dias_por_semana)||4]||DAY_TEMPLATES[4];
+  planDays=tmpl.map(d=>({label:d.label,desc:d.desc,blocks:d.blocks.map(b=>({type:b.type,badge:b.badge,note:b.note,exercises:[{name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""}]}))}));
+  setTimeout(()=>{updateMicroOptions();const pc=document.getElementById("phase-controls");const ic=document.getElementById("np-int-card");if(isOneDay){if(pc)pc.style.display="none";if(ic)ic.style.display="none";}else{if(pc)pc.style.display="contents";if(ic)ic.style.display="block";updateIntPreview();}renderVariantSelector();},80);
+}
+
+function renderVariantSelector(){
+  const id=document.getElementById("np-atleta")?.value;
+  const a=athletes.find(x=>x.id===id);
+  const days=parseInt(a?.dias_por_semana)||4;
+  const variants=VARIANTS[days]||VARIANTS[4];
+  const el=document.getElementById("variant-options");
+  if(!el) return;
+  const freqLabel=days===1?"1 día / semana":days+" días / semana";
+  el.innerHTML=`<div style="font-size:10px;color:var(--dim);letter-spacing:1px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(240,236,227,0.06)">Mostrando variantes para <span style="color:var(--gold);font-weight:600">${freqLabel}</span></div>`
+  +variants.map((v,i)=>`
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:3px;border:1px solid rgba(240,236,227,0.1);cursor:pointer;transition:all .15s;background:var(--faint)">
+      <input type="radio" name="variant" id="var-${v.id}" value="${i}" ${i===0?"checked":""} style="margin-top:3px;accent-color:var(--gold)" onchange="applyVariant(${i})">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--white);margin-bottom:2px">${v.name}</div>
+        <div style="font-size:10px;color:var(--dim);letter-spacing:1px">${v.days.length} días · ${v.days.map(d=>d.desc).join(" / ")}</div>
+      </div>
+    </label>`).join("")
+  +`<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:3px;border:1px solid rgba(240,236,227,0.1);cursor:pointer;transition:all .15s;background:var(--faint)">
+    <input type="radio" name="variant" id="var-custom" value="custom" style="margin-top:3px;accent-color:var(--gold)" onchange="applyVariant('custom')">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--gold-lt);margin-bottom:2px">Personalizada — armo yo la estructura</div>
+      <div style="font-size:10px;color:var(--dim);letter-spacing:1px">Días vacíos · agregás patrones y bloques libremente</div>
+    </div>
+  </label>`;
+  applyVariant(0);
+}
+
+function applyVariant(idx){
+  const id=document.getElementById("np-atleta")?.value;
+  const a=athletes.find(x=>x.id===id);
+  const days=parseInt(a?.dias_por_semana)||4;
+  const customCtrl=document.getElementById("custom-day-controls");
+  if(idx==="custom"){
+    planDays=[];
+    if(customCtrl) customCtrl.style.display="block";
+    document.getElementById("np-days").innerHTML=`<div class="empty" style="padding:20px;border:1px dashed rgba(240,236,227,0.15);border-radius:3px">Definí la cantidad de días y hacé click en "Generar días vacíos"</div>`;
+    return;
+  }
+  if(customCtrl) customCtrl.style.display="none";
+  const variants=VARIANTS[days]||VARIANTS[4];
+  const variant=variants[idx];
+  if(!variant) return;
+  planDays=variant.days.map(d=>({label:d.label,desc:d.desc,blocks:d.blocks.map(b=>({type:b.type,badge:b.badge,note:b.note,exercises:[{name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""}]}))}));
+  setTimeout(()=>renderDays(),50);
+}
+
+function initCustomDays(){
+  const n=parseInt(document.getElementById("custom-days-count")?.value)||4;
+  planDays=[];
+  for(let i=0;i<n;i++) planDays.push({label:"Día "+(i+1),desc:"Personalizado",blocks:[{type:"core",badge:"Core",note:"",exercises:[{name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""}]}]});
+  renderDays();
+}
+
+function renderDays(){
+  const container=document.getElementById("np-days");if(!container)return;
+  const int=getInt();container.innerHTML="";
+  planDays.forEach((day,di)=>{
+    const dc=document.createElement("div");dc.className="day-card";
+    dc.innerHTML=`<div class="day-header"><div class="day-num">${di+1}</div><div><div class="day-name">${day.label}</div><div class="day-desc">${day.desc}</div></div></div><div id="di-${di}"></div>
+      <div class="add-block-row"><button class="btn btn-ghost btn-sm" onclick="addBlock(${di})">＋ Agregar bloque</button></div>
+      <div id="abp-${di}" style="display:none;margin:0 14px 12px;background:var(--navy-lt);border:1px solid rgba(201,168,76,0.25);border-radius:3px;padding:12px;">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:10px">Configurar nuevo bloque</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div class="fg"><label class="fl">Patrón</label><select class="fs" id="abt-${di}"><option value="core">Core</option><option value="bisagra">Bisagra</option><option value="sentadilla">Sentadilla</option><option value="empuje">Empuje</option><option value="traccion">Tracción</option><option value="cargada">Cargada</option><option value="accesorio">Accesorio</option></select></div>
+          <div class="fg"><label class="fl">Rol</label><select class="fs" id="abb-${di}"><option value="Principal">Principal</option><option value="Secundario">Secundario</option><option value="Core">Core</option><option value="Accesorio">Accesorio</option><option value="Repaso">Repaso</option><option value="Principal A">Principal A</option><option value="Principal B">Principal B</option><option value="Abre">Abre</option><option value="Extra">Extra</option></select></div>
+          <div class="fg"><label class="fl">Nota</label><input class="fi" type="text" id="abn-${di}" placeholder="ej: énfasis glúteo"></div>
+        </div>
+        <div style="display:flex;gap:6px;"><button class="btn btn-primary btn-sm" onclick="confirmAddBlock(${di})">Agregar</button><button class="btn btn-ghost btn-sm" onclick="addBlock(${di})">Cancelar</button></div>
+      </div>`;
+    container.appendChild(dc);
+    renderDayBlocks(di,int);
+  });
+}
+
+function renderDayBlocks(di,int){
+  int=int||getInt();const container=document.getElementById("di-"+di);if(!container)return;
+  container.innerHTML="";
+  planDays[di].blocks.forEach((block,bi)=>{
+    const c=PC[block.type]||"#607080";
+    const isMain=block.badge==="Principal"||block.badge==="Core";
+    const bi2=isMain?int:{...int,r:!isNaN(parseInt(int.r))?String(Math.max(1,parseInt(int.r)-1)):int.r,rir:int.rir.replace(/\d+/g,n=>Math.min(4,parseInt(n)+1))};
+    const el=document.createElement("div");el.className="block open";el.id="b-"+di+"-"+bi;el.style.borderLeftColor=c;
+    const exRows=block.exercises.map((ex,ei)=>`
+      <div style="margin-bottom:7px;${ei>0?'padding-top:6px;border-top:1px dashed rgba(240,236,227,0.07)':''}">
+        ${block.exercises.length>1?`<div style="font-size:8px;letter-spacing:1px;color:${c};text-transform:uppercase;margin-bottom:3px">${String.fromCharCode(65+ei)}.</div>`:''}
+        <div class="ex-row">
+          <div class="ex-mini-group"><div class="ex-mini-lbl">Biblioteca</div>
+            <select class="ex-sel" style="border-left-color:${c}60" onchange="uef(${di},${bi},${ei},'name',this.value)">
+              <option value="">— Elegir —</option>
+              ${(EX[block.type]||[]).concat(customEx[block.type]||[]).map(e=>`<option value="${e}" ${e===ex.name?'selected':''}>${e}</option>`).join('')}
+            </select>
+          </div>
+          <div class="ex-mini-group"><div class="ex-mini-lbl">O escribir</div>
+            <input class="ex-inp" type="text" value="${ex.custom||''}" placeholder="Nombre libre..." oninput="uef(${di},${bi},${ei},'custom',this.value)">
+          </div>
+          <button class="btn btn-ghost btn-sm" style="padding-top:14px" onclick="rmEx(${di},${bi},${ei})">✕</button>
+        </div>
+        <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;align-items:flex-end;">
+          <div class="ex-mini-group" style="flex:1;min-width:90px"><div class="ex-mini-lbl">Video URL</div><input class="ex-mini" type="text" value="${ex.videoUrl||''}" placeholder="youtube.com/..." oninput="uef(${di},${bi},${ei},'videoUrl',this.value)"></div>
+          <div class="ex-mini-group" style="flex:0 0 55px"><div class="ex-mini-lbl">Series</div><input class="ex-mini" type="text" value="${isOneDayPlan()?(ex.series||""):ex.overrideInt&&ex.series?ex.series:bi2.s}" style="text-align:center" oninput="uef(${di},${bi},${ei},'series',this.value)"></div>
+          <div class="ex-mini-group" style="flex:0 0 55px"><div class="ex-mini-lbl">Reps</div><input class="ex-mini" type="text" value="${isOneDayPlan()?(ex.reps||""):ex.overrideInt&&ex.reps?ex.reps:bi2.r}" style="text-align:center" oninput="uef(${di},${bi},${ei},'reps',this.value)"></div>
+          ${isOneDayPlan()?`<div class="ex-mini-group" style="flex:0 0 65px"><div class="ex-mini-lbl">RPE/RIR</div><input class="ex-mini" type="text" value="${ex.rpeRir||''}" placeholder="RPE 8" style="text-align:center" oninput="uef(${di},${bi},${ei},'rpeRir',this.value)"></div>`
+          :`<label style="display:flex;align-items:center;gap:3px;font-size:9px;color:var(--dim);cursor:pointer;padding-bottom:6px"><input type="checkbox" ${ex.overrideInt?'checked':''} onchange="tov(${di},${bi},${ei},this.checked)">Int. propia</label>`}
+        </div>
+      </div>`).join('');
+    el.innerHTML=`
+      <div class="block-header" onclick="this.closest('.block').classList.toggle('open')">
+        <span class="block-badge" style="color:${c};border-color:${c}40;background:${c}15">${block.badge}</span>
+        <span class="block-type-lbl">${block.type}</span>
+        <span style="font-size:9px;color:var(--dim)">${isOneDayPlan()?"":bi2.s+"×"+bi2.r+" · "+bi2.rir}</span>
+        <span class="block-chevron">↓</span>
+      </div>
+      <div class="block-body">
+        <div>${exRows}</div>
+        <div class="block-actions">
+          <button class="btn btn-ghost btn-sm" onclick="addExToBlock(${di},${bi})">＋ Ejercicio</button>
+          ${block.exercises.length>1?`<button class="btn btn-ghost btn-sm" onclick="rmLastEx(${di},${bi})">− Quitar último</button>`:''}
+          ${bi>0?`<button class="btn btn-ghost btn-sm" style="color:var(--danger);margin-left:auto" onclick="rmBlock(${di},${bi})">✕ Quitar bloque</button>`:''}
+        </div>
+      </div>`;
+    container.appendChild(el);
+  });
+}
+
+function uef(di,bi,ei,f,v){
+  if(!planDays[di]?.blocks[bi]?.exercises[ei])return;
+  planDays[di].blocks[bi].exercises[ei][f]=v;
+  if(f==="custom"&&v.trim()){const t=planDays[di].blocks[bi].type;if(!customEx[t])customEx[t]=[];if(!customEx[t].includes(v.trim())&&!EX[t]?.includes(v.trim()))customEx[t].push(v.trim());}
+}
+function tov(di,bi,ei,c){planDays[di].blocks[bi].exercises[ei].overrideInt=c;renderDayBlocks(di);}
+function addExToBlock(di,bi){planDays[di].blocks[bi].exercises.push({name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""});renderDayBlocks(di);}
+function rmEx(di,bi,ei){if(planDays[di].blocks[bi].exercises.length>1){planDays[di].blocks[bi].exercises.splice(ei,1);renderDayBlocks(di);}}
+function rmLastEx(di,bi){if(planDays[di].blocks[bi].exercises.length>1){planDays[di].blocks[bi].exercises.pop();renderDayBlocks(di);}}
+function rmBlock(di,bi){planDays[di].blocks.splice(bi,1);renderDayBlocks(di);}
+function addBlock(di){const picker=document.getElementById("abp-"+di);if(picker)picker.style.display=picker.style.display==="none"?"block":"none";}
+function confirmAddBlock(di){
+  const type=document.getElementById("abt-"+di)?.value||"accesorio";
+  const badge=document.getElementById("abb-"+di)?.value||"Bloque";
+  const note=document.getElementById("abn-"+di)?.value||"";
+  planDays[di].blocks.push({type,badge,note,exercises:[{name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""}]});
+  const p=document.getElementById("abp-"+di);if(p)p.style.display="none";
+  renderDayBlocks(di);
+}
+
+async function savePlan(){
+  const aid=document.getElementById("np-atleta")?.value;if(!aid){alert("Seleccioná un atleta");return;}
+  const int=getInt();
+  const faseVal=document.getElementById("np-fase")?.value||"F1";
+  const microVal=parseInt(document.getElementById("np-micro")?.value||1);
+  const semVal=document.getElementById("np-semana")?.value||"A";
+  const isOneDay=parseInt(athletes.find(x=>x.id===aid)?.dias_por_semana)===1;
+  try{
+    const existingPlanes=await sb("planes?atleta_id=eq."+aid+"&activo=eq.true&select=id,microciclo,semana,fase");
+    let planId;
+    if(existingPlanes.length&&!isOneDay){
+      planId=existingPlanes[0].id;
+      await sb("planes?id=eq."+planId,"PATCH",{microciclo:microVal,semana:semVal,fase:faseVal,microciclo_activo:microVal,semana_activa:semVal,fase_actual:faseVal});
+    } else {
+      const planes=await sb("planes","POST",{atleta_id:aid,fase:faseVal,microciclo:microVal,semana:semVal,activo:true,microciclo_activo:microVal,semana_activa:semVal,fase_actual:faseVal});
+      planId=planes[0].id;
+    }
+    for(let di=0;di<planDays.length;di++){
+      const day=planDays[di];
+      const dias=await sb("plan_dias","POST",{plan_id:planId,orden:di+1,label:day.label,descripcion:day.desc,microciclo:microVal,semana:semVal});
+      const diaId=dias[0].id;
+      for(let bi=0;bi<day.blocks.length;bi++){
+        const block=day.blocks[bi];
+        const bloques=await sb("plan_bloques","POST",{dia_id:diaId,orden:bi+1,tipo:block.type,badge:block.badge,nota:block.note});
+        const bloqueId=bloques[0].id;
+        const isMain=block.badge==="Principal"||block.badge==="Core";
+        const bi2=isMain?int:{...int,r:!isNaN(parseInt(int.r))?String(Math.max(1,parseInt(int.r)-1)):int.r};
+        for(let ei=0;ei<block.exercises.length;ei++){
+          const ex=block.exercises[ei];
+          const nombre=ex.custom?.trim()||ex.name||"";if(!nombre)continue;
+          const rpeStr=isOneDay?(ex.rpeRir||null):bi2.rpe;
+          const rirStr=isOneDay?null:bi2.rir;
+          await sb("plan_ejercicios","POST",{bloque_id:bloqueId,orden:ei+1,nombre,
+            series:ex.overrideInt&&ex.series?parseInt(ex.series):(isOneDay?parseInt(ex.series||4):bi2.s),
+            reps:ex.overrideInt&&ex.reps?ex.reps:(isOneDay?(ex.reps||"8"):bi2.r),
+            rpe:rpeStr,rir:rirStr,video_url:ex.videoUrl||null});
+        }
+      }
+    }
+    alert("✓ Plan guardado");await loadAthletes();coachTab("atletas");
+  }catch(e){alert("Error: "+e.message);console.error(e);}
+}
+
+async function loadFeedback(){
+  const el=document.getElementById("feedback-list");
+  el.innerHTML='<div class="empty">Cargando...</div>';
+  try{
+    const aths=await sb("atletas?select=*&order=nombre");
+    if(!aths.length){el.innerHTML='<div class="empty">No hay atletas todavía.</div>';return;}
+    const allRegs=await sb("registros?comentario_atleta=not.is.null&select=id,comentarios_entrenador(id)");
+    const pending=allRegs.filter(r=>!r.comentarios_entrenador?.length).length;
+    const dot=document.getElementById("feedback-dot");
+    const nc=document.getElementById("notif-count");
+    if(pending>0){if(dot)dot.style.display="inline-block";if(nc){nc.textContent=pending+" sin responder";nc.style.display="inline";}}
+    else{if(dot)dot.style.display="none";if(nc)nc.style.display="none";}
+    el.innerHTML=`
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;" id="fb-athlete-tabs">
+        ${aths.map((a,i)=>`<button onclick="loadFeedbackForAthlete('${a.id}')" id="fbtab-${a.id}" class="btn btn-${i===0?'primary':'secondary'} btn-sm">${a.nombre}</button>`).join("")}
+      </div>
+      <div id="fb-content"><div class="empty">Seleccioná un atleta</div></div>`;
+    if(aths.length) loadFeedbackForAthlete(aths[0].id);
+  }catch(e){el.innerHTML='<div class="empty">Error al cargar.</div>';console.error(e);}
+}
+
+async function loadFeedbackForAthlete(atletaId){
+  document.querySelectorAll("[id^='fbtab-']").forEach(b=>{b.className=b.id==="fbtab-"+atletaId?"btn btn-primary btn-sm":"btn btn-secondary btn-sm";});
+  const container=document.getElementById("fb-content");
+  if(!container)return;
+  container.innerHTML='<div class="empty">Cargando...</div>';
+  try{
+    const planes=await sb("planes?atleta_id=eq."+atletaId+"&activo=eq.true&order=created_at.desc&limit=1");
+    if(!planes.length){container.innerHTML='<div class="empty">Sin plan activo.</div>';return;}
+    const plan=planes[0];
+    container.innerHTML=`<div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--gold);letter-spacing:1px;font-weight:700">${plan.fase||"Libre"} · Micro ${plan.microciclo||1} · Sem ${plan.semana||"A"}</span>
+      <div style="display:flex;gap:6px;">
+        <button onclick="loadFeedbackWeek('${atletaId}','${plan.id}','A')" id="fbweek-A" class="btn btn-primary btn-sm">Semana A</button>
+        <button onclick="loadFeedbackWeek('${atletaId}','${plan.id}','B')" id="fbweek-B" class="btn btn-secondary btn-sm">Semana B</button>
+      </div>
+    </div>
+    <div id="fb-week-content"></div>`;
+    loadFeedbackWeek(atletaId,plan.id,"A");
+  }catch(e){container.innerHTML='<div class="empty">Error.</div>';console.error(e);}
+}
+
+async function loadFeedbackWeek(atletaId,planId,week){
+  ["A","B"].forEach(w=>{const b=document.getElementById("fbweek-"+w);if(b)b.className=w===week?"btn btn-primary btn-sm":"btn btn-secondary btn-sm";});
+  const container=document.getElementById("fb-week-content");if(!container)return;
+  container.innerHTML='<div style="color:var(--dim);font-size:12px;padding:10px 0">Cargando...</div>';
+  try{
+    const activeMicro=parseInt((await sb("planes?id=eq."+planId+"&select=microciclo_activo,microciclo"))[0]?.microciclo_activo||1);
+    const dias=await sb("plan_dias?plan_id=eq."+planId+"&microciclo=eq."+activeMicro+"&semana=eq.A&order=orden");
+    const diasFallback=dias.length?dias:await sb("plan_dias?plan_id=eq."+planId+"&order=orden&limit=10");
+    const diaIds=diasFallback.map(d=>d.id);
+    if(!diaIds.length){container.innerHTML='<div class="empty">Sin días.</div>';return;}
+    const bloques=await sb("plan_bloques?dia_id=in.("+diaIds.join(",")+")"+"&order=orden");
+    const bloqueIds=bloques.map(b=>b.id);
+    const ejercicios=bloqueIds.length?await sb("plan_ejercicios?bloque_id=in.("+bloqueIds.join(",")+")"+"&order=orden"):[];
+    const ejIds=ejercicios.map(e=>e.id);
+    const regs=ejIds.length?await sb("registros?ejercicio_id=in.("+ejIds.join(",")+")"+"&atleta_id=eq."+atletaId+"&semana_tipo=eq."+week+"&order=created_at.desc"):[];
+    const regIds=regs.filter(r=>r.comentario_atleta).map(r=>r.id);
+    const comments=regIds.length?await sb("comentarios_entrenador?registro_id=in.("+regIds.join(",")+")"+"&order=created_at.asc"):[];
+    const bloquesByDia={};bloques.forEach(b=>{if(!bloquesByDia[b.dia_id])bloquesByDia[b.dia_id]=[];bloquesByDia[b.dia_id].push(b);});
+    const ejsByBloque={};ejercicios.forEach(e=>{if(!ejsByBloque[e.bloque_id])ejsByBloque[e.bloque_id]=[];ejsByBloque[e.bloque_id].push(e);});
+    const regByEj={};regs.forEach(r=>{if(!regByEj[r.ejercicio_id])regByEj[r.ejercicio_id]=r;});
+    const commentsByReg={};comments.forEach(c=>{if(!commentsByReg[c.registro_id])commentsByReg[c.registro_id]=[];commentsByReg[c.registro_id].push(c);});
+    let html="";
+    for(const dia of diasFallback){
+      const bqs=bloquesByDia[dia.id]||[];
+      html+=`<div class="day-card" style="margin-bottom:10px"><div class="day-header"><div class="day-num">${dia.orden}</div><div><div class="day-name">${dia.label}</div><div class="day-desc">${dia.descripcion||""}</div></div></div>`;
+      for(const bloque of bqs){
+        const c=PC[bloque.tipo]||"#607080";
+        const ejs=ejsByBloque[bloque.id]||[];
+        html+=`<div class="block open" style="border-left-color:${c}"><div class="block-header" onclick="this.closest('.block').classList.toggle('open')"><span class="block-badge" style="color:${c};border-color:${c}40;background:${c}15">${bloque.badge}</span><span class="block-type-lbl">${bloque.tipo}${bloque.nota?" · "+bloque.nota:""}</span><span class="block-chevron">↓</span></div><div class="block-body">`;
+        for(const ej of ejs){
+          const reg=regByEj[ej.id]||null;
+          const cmts=reg?commentsByReg[reg.id]||[]:[];
+          const hasComment=reg?.comentario_atleta;
+          const responded=cmts.length>0;
+          html+=`<div style="border-bottom:1px solid rgba(240,236,227,0.05);padding:10px 0;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:4px">
+              <div><span style="font-size:13px;font-weight:600;color:var(--white)">${ej.nombre}</span><span style="font-size:10px;color:var(--dim);margin-left:8px">${ej.series||""}×${ej.reps||""} ${ej.rpe||ej.rir||""}</span></div>
+              <span style="font-size:10px;font-weight:700;letter-spacing:1px;color:${reg?(hasComment&&!responded?"#e8c97a":responded?"var(--success)":"var(--dim)"):"rgba(240,236,227,0.2)"}">${reg?(hasComment&&!responded?"● PENDIENTE":responded?"✓ RESPONDIDO":"Registrado"):"○ Sin registrar"}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:${hasComment?'8px':'0'}">
+              <div style="background:var(--navy-lt);border-radius:3px;padding:8px 10px;"><div style="font-size:8px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:3px">Peso</div><div style="font-size:13px;font-weight:600">${reg?.peso_utilizado||"—"}</div></div>
+              <div style="background:var(--navy-lt);border-radius:3px;padding:8px 10px;"><div style="font-size:8px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:3px">Reps</div><div style="font-size:13px;font-weight:600">${reg?.reps_realizadas||"—"}</div></div>
+              <div style="background:var(--navy-lt);border-radius:3px;padding:8px 10px;"><div style="font-size:8px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:3px">RPE</div><div style="font-size:13px;font-weight:600">${reg?.rpe_percibido||"—"}</div></div>
+            </div>
+            ${hasComment?`<div style="background:rgba(240,236,227,0.05);border-left:3px solid rgba(201,168,76,0.5);padding:8px 12px;border-radius:0 3px 3px 0;margin-bottom:6px"><div style="font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:3px">Comentario</div><div style="font-size:12px;color:var(--white);line-height:1.6;font-style:italic">"${reg.comentario_atleta}"</div></div>`:""}
+            ${cmts.map(c=>`<div style="background:rgba(74,138,90,0.1);border-left:3px solid var(--success);padding:8px 12px;border-radius:0 3px 3px 0;margin-bottom:4px"><div style="font-size:9px;letter-spacing:1px;color:var(--success);text-transform:uppercase;margin-bottom:3px">Tu respuesta</div><div style="font-size:12px;color:var(--white)">${c.texto}</div></div>`).join("")}
+            ${hasComment&&!responded&&reg?`<div style="display:flex;gap:8px;margin-top:6px;"><input class="fi" type="text" id="fb-reply-${reg.id}" placeholder="Tu respuesta..." style="flex:1;font-size:12px;padding:7px 10px"><button class="btn btn-primary btn-sm" onclick="sendFeedback('${reg.id}','${atletaId}','${ej.id}','${atletaId}','${planId}','${week}')">Enviar</button></div>`:""}
+          </div>`;
+        }
+        html+=`</div></div>`;
+      }
+      html+=`</div>`;
+    }
+    container.innerHTML=html||'<div class="empty">Sin ejercicios.</div>';
+  }catch(e){container.innerHTML='<div class="empty">Error.</div>';console.error(e);}
+}
+
+async function sendFeedback(rid,aid,eid,atletaId,planId,week){
+  const t=document.getElementById("fb-reply-"+rid)?.value.trim();if(!t)return;
+  try{
+    await sb("comentarios_entrenador","POST",{registro_id:rid,atleta_id:aid,ejercicio_id:eid,texto:t});
+    loadFeedbackWeek(atletaId,planId,week);
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function loadAthleteView(){
+  const el=document.getElementById("athlete-content");
+  try{
+    const planes=await sb("planes?atleta_id=eq."+currentAthlete.id+"&activo=eq.true&order=created_at.desc&limit=1");
+    const plan=planes.find(p=>p.activo)||planes[0];
+    if(!plan){el.innerHTML=`<div style="padding:60px 20px;text-align:center"><div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:300;margin-bottom:8px">Hola, <em style="color:var(--gold-lt)">${currentAthlete.nombre}</em></div><div style="font-size:13px;color:var(--dim)">Tu entrenador está preparando tu plan.</div></div>`;return;}
+    const activeMicro=plan.microciclo_activo||plan.microciclo||1;
+    const activeSem=plan.semana_activa||plan.semana||"A";
+    const activeFase=plan.fase_actual||plan.fase||"F1";
+    let diasToShow=[];
+    try{
+      const f1=await sb("plan_dias?plan_id=eq."+plan.id+"&microciclo=eq."+activeMicro+"&semana=eq.A&order=orden");
+      if(f1.length){diasToShow=f1;}
+      else{const f2=await sb("plan_dias?plan_id=eq."+plan.id+"&microciclo=eq."+activeMicro+"&order=orden");diasToShow=f2.length?f2:await sb("plan_dias?plan_id=eq."+plan.id+"&order=orden&limit=20");}
+    }catch(e){diasToShow=await sb("plan_dias?plan_id=eq."+plan.id+"&order=orden&limit=20");}
+    if(!diasToShow.length){el.innerHTML=`<div style="padding:60px 20px;text-align:center"><div style="font-family:'Cormorant Garamond',serif;font-size:26px;margin-bottom:8px">Hola, <em style="color:var(--gold-lt)">${currentAthlete.nombre}</em></div><div style="font-size:13px;color:var(--dim)">Tu entrenador está configurando tu plan.</div></div>`;return;}
+    const compA=await sb("dias_completados?atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq.A&select=dia_id");
+    const compB=await sb("dias_completados?atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq.B&select=dia_id");
+    const compAIds=compA.map(x=>x.dia_id);
+    const compBIds=compB.map(x=>x.dia_id);
+    const allADone=diasToShow.every(d=>compAIds.includes(d.id));
+    let activeWeek=allADone?"B":"A";
+    el.innerHTML=`<div style="margin-bottom:16px">
+      <div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:300;margin-bottom:10px">Hola, <em style="color:var(--gold-lt)">${currentAthlete.nombre}</em></div>
+      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
+        <button onclick="setAthleteWeek('A')" id="tab-week-A" style="padding:7px 14px;border-radius:3px;border:1px solid;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all .2s;background:${activeWeek==='A'?'var(--gold)':'transparent'};color:${activeWeek==='A'?'var(--navy)':'var(--dim)'};border-color:${activeWeek==='A'?'var(--gold)':'rgba(240,236,227,0.2)'}">Semana A ${allADone?'✓':''}</button>
+        <button onclick="setAthleteWeek('B')" id="tab-week-B" style="padding:7px 14px;border-radius:3px;border:1px solid;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all .2s;${allADone?'background:'+(activeWeek==='B'?'var(--gold)':'transparent')+';color:'+(activeWeek==='B'?'var(--navy)':'var(--dim)')+';border-color:'+(activeWeek==='B'?'var(--gold)':'rgba(240,236,227,0.2)'):'opacity:0.3;cursor:not-allowed;background:transparent;color:var(--dim);border-color:rgba(240,236,227,0.1)'}">Semana B 🔒</button>
+        <button onclick="showAthleteHistory()" id="tab-history" style="padding:7px 14px;border-radius:3px;border:1px solid rgba(240,236,227,0.2);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;background:transparent;color:var(--dim)">📋 Historial</button>
+      </div>
+      <div id="athlete-week-content"></div>
+      <div id="athlete-history-content" style="display:none"></div>
+    </div>`;
+    window._athletePlan={plan,diasPlan:diasToShow,diasToShow,compAIds,compBIds,allADone,activeMicro,activeSem,activeFase};
+    renderAthleteWeek(activeWeek);
+  }catch(e){el.innerHTML='<div class="empty">Error al cargar.</div>';console.error(e);}
+}
+
+function setAthleteWeek(week){
+  const p=window._athletePlan;if(!p)return;
+  if(week==='B'&&!p.allADone)return;
+  renderAthleteWeek(week);
+  ['A','B'].forEach(w=>{
+    const btn=document.getElementById("tab-week-"+w);if(!btn)return;
+    const isActive=w===week;const locked=w==='B'&&!p.allADone;
+    btn.style.background=isActive?'var(--gold)':'transparent';
+    btn.style.color=isActive?'var(--navy)':'var(--dim)';
+    btn.style.borderColor=isActive?'var(--gold)':'rgba(240,236,227,0.2)';
+  });
+}
+
+
+async function renderAthleteWeek(week){
+  const p=window._athletePlan;if(!p)return;
+  const {plan,diasToShow,compAIds,compBIds}=p;
+  const container=document.getElementById("athlete-week-content");if(!container)return;
+  container.innerHTML='<div style="color:var(--dim);font-size:12px;padding:20px 0">Cargando...</div>';
+  const compIds=week==="A"?compAIds:compBIds;
+  try{
+    const diaIds=diasToShow.map(d=>d.id);
+    if(!diaIds.length){container.innerHTML='<div style="padding:30px;text-align:center;color:var(--dim)">No hay ejercicios cargados.</div>';return;}
+    const allBloques=await sb("plan_bloques?dia_id=in.("+diaIds.join(",")+")"+"&order=orden");
+    const bloqueIds=allBloques.map(b=>b.id);
+    let allEjercicios=[];if(bloqueIds.length)allEjercicios=await sb("plan_ejercicios?bloque_id=in.("+bloqueIds.join(",")+")"+"&order=orden");
+    const ejIds=allEjercicios.map(e=>e.id);
+    let allRegs=[],allComments=[];
+    if(ejIds.length){
+      allRegs=await sb("registros?ejercicio_id=in.("+ejIds.join(",")+")"+"&atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq."+week+"&order=created_at.desc");
+      const regIds=allRegs.filter(r=>r.comentario_atleta).map(r=>r.id);
+      if(regIds.length)allComments=await sb("comentarios_entrenador?registro_id=in.("+regIds.join(",")+")"+"&order=created_at.asc");
+    }
+    const bloquesByDia={};allBloques.forEach(b=>{if(!bloquesByDia[b.dia_id])bloquesByDia[b.dia_id]=[];bloquesByDia[b.dia_id].push(b);});
+    const ejsByBloque={};allEjercicios.forEach(e=>{if(!ejsByBloque[e.bloque_id])ejsByBloque[e.bloque_id]=[];ejsByBloque[e.bloque_id].push(e);});
+    const regByEj={};allRegs.forEach(r=>{if(!regByEj[r.ejercicio_id])regByEj[r.ejercicio_id]=r;});
+    const commentsByReg={};allComments.forEach(c=>{if(!commentsByReg[c.registro_id])commentsByReg[c.registro_id]=[];commentsByReg[c.registro_id].push(c);});
+    let html="";
+    for(const dia of diasToShow){
+      const isDone=compIds.includes(dia.id);
+      const bloques=bloquesByDia[dia.id]||[];
+      let checkinDone=false,checkinValue=null;
+      const firstB=bloques[0];
+      if(firstB){const firstEjs=ejsByBloque[firstB.id]||[];if(firstEjs.length){const r=regByEj[firstEjs[0].id];if(r?.estado_energia){checkinDone=true;checkinValue=r.estado_energia;}}}
+      html+=`<div class="day-card" style="margin-bottom:10px;${isDone?"opacity:0.8":""}">
+        <div class="day-header" style="justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="day-num" style="background:${isDone?"var(--success)":"var(--gold)"}">${isDone?"✓":dia.orden}</div>
+            <div><div class="day-name">${dia.label}</div><div class="day-desc">${dia.descripcion||""}</div></div>
+          </div>
+          ${checkinDone?`<div style="font-size:10px;color:var(--dim)">Estado inicial: <span style="color:var(--gold);font-weight:700">${checkinValue}/10</span></div>`:""}
+        </div>
+        ${!checkinDone&&!isDone?`
+        <div id="checkin-${dia.id}" style="padding:20px 16px;border-bottom:1px solid rgba(240,236,227,0.08);background:rgba(201,168,76,0.04)">
+          <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:300;color:var(--white);margin-bottom:4px">Antes de arrancar —</div>
+          <div style="font-size:12px;color:var(--dim);margin-bottom:16px;line-height:1.6">Tomá un segundo. ¿Cómo llegás hoy energéticamente?</div>
+          <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;">
+            ${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button onclick="selectCheckin('${dia.id}',${n})" id="cin-${dia.id}-${n}" style="width:38px;height:38px;border-radius:50%;border:2px solid rgba(240,236,227,0.15);background:transparent;color:var(--dim);font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s">${n}</button>`).join("")}
+          </div>
+          <button id="checkin-btn-${dia.id}" onclick="confirmCheckin('${dia.id}','${week}','${plan.id}')" disabled style="opacity:0.4;transition:opacity .2s;background:var(--gold);color:var(--navy);border:none;padding:9px 16px;border-radius:3px;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:not-allowed">Comenzar entrenamiento →</button>
+          <span id="checkin-sel-${dia.id}" style="font-size:11px;color:var(--dim);margin-left:8px"></span>
+        </div>
+        <div id="exs-${dia.id}" style="display:none">`:`<div id="exs-${dia.id}">`}
+      `;
+      for(const bloque of bloques){
+        const c=PC[bloque.tipo]||"#607080";const ejs=ejsByBloque[bloque.id]||[];
+        html+=`<div class="block open" style="border-left-color:${c}">
+          <div class="block-header" onclick="this.closest('.block').classList.toggle('open')">
+            <span class="block-badge" style="color:${c};border-color:${c}40;background:${c}15">${bloque.badge}</span>
+            <span class="block-type-lbl">${bloque.tipo}${bloque.nota?" · "+bloque.nota:""}</span>
+            <span class="block-chevron">↓</span>
+          </div><div class="block-body">`;
+        for(const ej of ejs){
+          const reg=regByEj[ej.id]||null;
+          const comments=reg?commentsByReg[reg.id]||[]:[];
+          const hasComment=reg?.comentario_atleta;
+          html+=`<div class="registro-card">
+            <div class="reg-header" onclick="this.nextElementSibling.classList.toggle('open')">
+              <div>
+                <div class="reg-ex-name">${ej.nombre}${hasComment&&!comments.length?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);margin-left:6px;vertical-align:middle"></span>':''}</div>
+                <div style="font-size:10px;color:var(--dim);margin-top:2px">${ej.series}×${ej.reps}${ej.rpe?" · "+ej.rpe:""}${ej.rir?" · "+ej.rir:""}${ej.video_url?` · <a href="${ej.video_url}" target="_blank" style="color:var(--gold);text-decoration:none">▶ Video</a>`:""}</div>
+              </div>
+              <span style="font-size:16px;color:${reg?"var(--success)":"var(--dim)"}">${reg?"✓":"○"}</span>
+            </div>
+            <div class="reg-body ${reg?"open":""}">
+              <div class="reg-grid">
+                <div class="fg"><label class="fl">Peso utilizado</label><input class="fi" type="text" id="w-${ej.id}-${week}" value="${reg?.peso_utilizado||""}" placeholder="ej: 80kg"></div>
+                <div class="fg"><label class="fl">Reps realizadas</label><input class="fi" type="text" id="r-${ej.id}-${week}" value="${reg?.reps_realizadas||""}" placeholder="ej: 8/8/7"></div>
+                <div class="fg"><label class="fl">RPE percibido</label><input class="fi" type="text" id="p-${ej.id}-${week}" value="${reg?.rpe_percibido||""}" placeholder="ej: 8.5"></div>
+              </div>
+              <div class="fg" style="margin-bottom:8px">
+                <label class="fl">Comentarios / sensaciones</label>
+                <textarea class="ftextarea" id="c-${ej.id}-${week}" placeholder="¿Cómo se sintió? ¿Qué limitó?">${reg?.comentario_atleta||""}</textarea>
+              </div>
+              ${comments.map(cm=>`<div class="feedback-box" style="margin-bottom:6px"><div class="feedback-label">💬 Tu entrenador</div><div class="feedback-text">${cm.texto}</div></div>`).join("")}
+              <div style="display:flex;align-items:center;gap:8px;">
+                <button class="btn btn-primary btn-sm" onclick="saveReg('${ej.id}','${week}','${reg?.id||""}')">Guardar</button>
+                <span class="saved-indicator" id="si-${ej.id}-${week}">✓ Guardado</span>
+              </div>
+            </div>
+          </div>`;
+        }
+        html+=`</div></div>`;
+      }
+      html+=`</div>
+      <div style="padding:12px 16px;border-top:1px solid rgba(240,236,227,0.06);display:flex;align-items:center;gap:10px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;${isDone?"opacity:0.6":""}">
+          <input type="checkbox" ${isDone?"checked":""} ${isDone?"disabled":""} onchange="markDayDone('${dia.id}','${week}',this.checked,'${plan.id}')" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer">
+          <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${isDone?"var(--success)":"var(--dim)"}">${isDone?"✓ Entrenamiento completado":"Marcar como completado"}</span>
+        </label>
+      </div></div>`;
+    }
+    if(week==="B"&&p.allADone){
+      const compBIds2=await sb("dias_completados?atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq.B&select=dia_id");
+      const allBDone=diasToShow.every(d=>compBIds2.map(x=>x.dia_id).includes(d.id));
+      if(allBDone){
+        const phaseMap={F1:2,F2:4,F3:4,F4:3};
+        const nextMicro=p.activeMicro+1;
+        const isLastMicro=nextMicro>(phaseMap[p.activeFase]||4);
+        html+=`<div style="text-align:center;padding:28px 20px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.2);border-radius:4px;margin-top:8px">
+          <div style="font-size:24px;margin-bottom:8px">🎯</div>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:var(--gold-lt);margin-bottom:6px">¡Microciclo ${p.activeMicro} completado!</div>
+          <div style="font-size:12px;color:var(--dim);line-height:1.7">${isLastMicro?"Completaste la fase "+p.activeFase+". Tu entrenador está preparando la siguiente etapa.":"Las semanas "+(nextMicro*2-1)+"-"+(nextMicro*2)+" estarán disponibles pronto."}</div>
+        </div>`;
+      }
+    }
+    container.innerHTML=html;
+  }catch(e){
+    container.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim)">Error al cargar el plan. Recargá la página.</div>';
+    console.error("renderAthleteWeek error:",e);
+  }
+}
+
+
+async function markDayDone(diaId,week,checked,planId){
+  try{
+    if(checked){await sb("dias_completados","POST",{dia_id:diaId,atleta_id:currentAthlete.id,semana_tipo:week});}
+    else{await sb("dias_completados?dia_id=eq."+diaId+"&atleta_id=eq."+currentAthlete.id+"&semana_tipo=eq."+week,"DELETE");}
+    await loadAthleteView();
+  }catch(e){if(!e.message.includes("duplicate"))console.error(e);await loadAthleteView();}
+}
+
+async function saveReg(ejId,sem,existId){
+  const key=ejId+"-"+sem;
+  const data={ejercicio_id:ejId,atleta_id:currentAthlete.id,semana_tipo:sem,
+    peso_utilizado:document.getElementById("w-"+key)?.value.trim()||null,
+    reps_realizadas:document.getElementById("r-"+key)?.value.trim()||null,
+    rpe_percibido:document.getElementById("p-"+key)?.value.trim()||null,
+    comentario_atleta:document.getElementById("c-"+key)?.value.trim()||null,
+    fecha:new Date().toISOString().split("T")[0]};
+  try{
+    if(existId)await sb("registros?id=eq."+existId,"PATCH",data);
+    else await sb("registros","POST",data);
+    const ind=document.getElementById("si-"+key);
+    if(ind){ind.classList.add("show");setTimeout(()=>ind.classList.remove("show"),2000);}
+  }catch(e){alert("Error al guardar: "+e.message);}
+}
+
+async function showAthleteHistory(){
+  const histEl=document.getElementById("athlete-history-content");
+  const weekEl=document.getElementById("athlete-week-content");
+  if(!histEl||!weekEl)return;
+  if(histEl.style.display!=="none"){histEl.style.display="none";weekEl.style.display="block";return;}
+  weekEl.style.display="none";histEl.style.display="block";
+  histEl.innerHTML='<div style="color:var(--dim);font-size:12px;padding:20px 0">Cargando historial...</div>';
+  try{
+    const regs=await sb("registros?atleta_id=eq."+currentAthlete.id+"&order=fecha.desc,created_at.desc&select=*,plan_ejercicios(nombre,plan_bloques(badge,tipo,plan_dias(label,planes(fase,microciclo,semana))))");
+    if(!regs.length){histEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--dim)">Sin entrenamientos registrados todavía.</div>';return;}
+    const byDate={};
+    regs.forEach(r=>{const k=r.fecha;if(!byDate[k])byDate[k]=[];byDate[k].push(r);});
+    let html=`<div style="margin-bottom:12px;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase">${regs.length} registros · ${Object.keys(byDate).length} sesiones</div>`;
+    Object.entries(byDate).forEach(([fecha,rs])=>{
+      const ex=rs[0];
+      const fase=ex?.plan_ejercicios?.plan_bloques?.plan_dias?.planes?.fase||"";
+      const micro=ex?.plan_ejercicios?.plan_bloques?.plan_dias?.planes?.microciclo||"";
+      const sem=ex?.plan_ejercicios?.plan_bloques?.plan_dias?.planes?.semana||"";
+      const dia=ex?.plan_ejercicios?.plan_bloques?.plan_dias?.label||"";
+      html+=`<div class="card" style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+          <div style="font-size:13px;font-weight:600">${new Date(fecha+"T12:00:00").toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"})}</div>
+          <div style="font-size:10px;color:var(--gold);letter-spacing:1px">${fase?fase+" · Micro "+micro+" · Sem "+sem:""} ${dia}</div>
+        </div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr style="border-bottom:1px solid rgba(240,236,227,0.1)">
+            <th style="text-align:left;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase">Ejercicio</th>
+            <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase">Peso</th>
+            <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase">Reps</th>
+            <th style="text-align:center;padding:5px 8px;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase">RPE</th>
+          </tr></thead>
+          <tbody>${rs.map(r=>`
+            <tr style="border-bottom:1px solid rgba(240,236,227,0.05)">
+              <td style="padding:6px 8px;color:var(--white);font-weight:500">${r.plan_ejercicios?.nombre||"—"}</td>
+              <td style="padding:6px 8px;text-align:center;color:var(--gold-lt);font-weight:600">${r.peso_utilizado||"—"}</td>
+              <td style="padding:6px 8px;text-align:center;color:var(--dim)">${r.reps_realizadas||"—"}</td>
+              <td style="padding:6px 8px;text-align:center;color:var(--dim)">${r.rpe_percibido||"—"}</td>
+            </tr>
+            ${r.comentario_atleta?`<tr><td colspan="4" style="padding:3px 8px 7px;font-size:10px;color:var(--dim);font-style:italic">"${r.comentario_atleta}"</td></tr>`:""}`).join("")}
+          </tbody>
+        </table></div>
+      </div>`;
+    });
+    histEl.innerHTML=html;
+  }catch(e){histEl.innerHTML='<div class="empty">Error al cargar historial.</div>';console.error(e);}
+}
+
+async function activatePlan(planId,atletaId){
+  try{
+    await sb("planes?atleta_id=eq."+atletaId,"PATCH",{activo:false});
+    await sb("planes?id=eq."+planId,"PATCH",{activo:true});
+    viewAthlete(atletaId);
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function deletePlan(planId,atletaId){
+  if(!confirm("¿Borrar este plan?")) return;
+  try{
+    const dias=await sb("planes?id=eq."+planId+"&select=id");
+    await sb("planes?id=eq."+planId,"DELETE");
+    viewAthlete(atletaId);
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function deleteAthlete(id,nombre){
+  if(!confirm("¿Eliminar a "+nombre+"? Se borrarán todos sus datos.")) return;
+  try{
+    const planes=await sb("planes?atleta_id=eq."+id+"&select=id");
+    for(const plan of planes){
+      const dias=await sb("plan_dias?plan_id=eq."+plan.id+"&select=id");
+      for(const dia of dias){
+        const bloques=await sb("plan_bloques?dia_id=eq."+dia.id+"&select=id");
+        for(const bloque of bloques) await sb("plan_ejercicios?bloque_id=eq."+bloque.id,"DELETE");
+        await sb("plan_bloques?dia_id=eq."+dia.id,"DELETE");
+      }
+      await sb("plan_dias?plan_id=eq."+plan.id,"DELETE");
+    }
+    await sb("registros?atleta_id=eq."+id,"DELETE");
+    await sb("comentarios_entrenador?atleta_id=eq."+id,"DELETE");
+    await sb("planes?atleta_id=eq."+id,"DELETE");
+    await sb("atletas?id=eq."+id,"DELETE");
+    await loadAthletes();coachTab("atletas");
+    alert("✓ Atleta eliminado");
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function togglePlanDetail(planId){
+  const el=document.getElementById("plan-detail-"+planId);
+  if(!el)return;
+  if(el.style.display!=="none"){el.style.display="none";return;}
+  el.style.display="block";
+  if(el.innerHTML.trim())return;
+  el.innerHTML='<div style="font-size:11px;color:var(--dim)">Cargando...</div>';
+  try{
+    const dias=await sb("plan_dias?plan_id=eq."+planId+"&order=microciclo,semana,orden");
+    if(!dias.length){el.innerHTML='<div style="font-size:11px;color:var(--dim)">Sin días.</div>';return;}
+    const groups={};
+    dias.forEach(d=>{const k=(d.microciclo||1)+"-"+(d.semana||"A");if(!groups[k])groups[k]={microciclo:d.microciclo||1,semana:d.semana||"A",dias:[]};groups[k].dias.push(d);});
+    let html="";
+    for(const [key,group] of Object.entries(groups)){
+      const diaIds=group.dias.map(d=>d.id);
+      const bloques=await sb("plan_bloques?dia_id=in.("+diaIds.join(",")+")"+"&order=orden");
+      const bloqueIds=bloques.map(b=>b.id);
+      const ejs=bloqueIds.length?await sb("plan_ejercicios?bloque_id=in.("+bloqueIds.join(",")+")"+"&order=orden"):[];
+      const ejByBloque={};ejs.forEach(e=>{if(!ejByBloque[e.bloque_id])ejByBloque[e.bloque_id]=[];ejByBloque[e.bloque_id].push(e);});
+      const bloquesByDia={};bloques.forEach(b=>{if(!bloquesByDia[b.dia_id])bloquesByDia[b.dia_id]=[];bloquesByDia[b.dia_id].push(b);});
+      html+=`<div style="margin-top:8px;margin-bottom:4px"><div style="font-size:9px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;font-weight:700;padding:4px 0;border-bottom:1px solid rgba(201,168,76,0.2);margin-bottom:6px">Micro ${group.microciclo} · Sem ${group.semana}</div>`;
+      for(const dia of group.dias){
+        const bqs=bloquesByDia[dia.id]||[];
+        html+=`<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:700;color:var(--white);margin-bottom:3px">${dia.label} — ${dia.descripcion||""}</div>`;
+        for(const b of bqs){
+          const c=PC[b.tipo]||"#607080";const ejList=ejByBloque[b.id]||[];
+          html+=`<div style="margin-left:8px;margin-bottom:3px"><span style="font-size:8px;font-weight:700;letter-spacing:1.5px;color:${c};text-transform:uppercase">${b.badge} · ${b.tipo}</span>
+            ${ejList.map(e=>`<div style="font-size:11px;color:var(--dim);padding:1px 0 1px 8px">${e.nombre} <span style="color:rgba(240,236,227,0.3);font-size:10px">${e.series?e.series+"×":""} ${e.reps||""} ${e.rpe?"· "+e.rpe:""} ${e.rir?"· "+e.rir:""}</span></div>`).join("")}
+          </div>`;
+        }
+        html+="</div>";
+      }
+      html+="</div>";
+    }
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<div style="font-size:11px;color:#d47070">Error.</div>';console.error(e);}
+}
+
+function showShareLink(token,nombre){
+  const link=window.location.origin+window.location.pathname+"?t="+token;
+  document.getElementById("share-link-text").textContent=link;
+  document.getElementById("modal-share").classList.add("open");
+}
+
+function copyShareLink(){
+  navigator.clipboard.writeText(document.getElementById("share-link-text").textContent).then(()=>{
+    const b=event.target;b.textContent="✓ Copiado!";setTimeout(()=>b.textContent="📋 Copiar",2000);
+  });
+}
+
+
 function closeModal(id){document.getElementById(id).classList.remove("open");}
 document.querySelectorAll(".modal-overlay").forEach(m=>m.addEventListener("click",e=>{if(e.target===m)m.classList.remove("open");}));
 
