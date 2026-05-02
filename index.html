@@ -703,7 +703,7 @@ async function viewAthlete(id){
     </div>
 
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;padding:14px;background:rgba(240,236,227,0.04);border-radius:3px;border:1px solid rgba(240,236,227,0.08);">
-      <button class="btn btn-primary" onclick="setupNewPlan('${a.id}')" style="display:inline-flex">+ Nuevo plan</button>
+      <button class="btn btn-primary" onclick="setupNewPlan('${a.id}')" style="display:inline-flex">${parseInt(a.dias_por_semana)===1?"+ Nuevo entrenamiento":"+ Nuevo plan"}</button>
       <button class="btn btn-secondary" onclick="showShareLink('${a.token}','${a.nombre}')" style="display:inline-flex">🔗 Link atleta</button>
       <button class="btn btn-secondary" onclick="openEditAthleteModal('${a.id}')" style="display:inline-flex">✏️ Editar</button>
       <button class="btn btn-secondary" onclick="archiveAthlete('${a.id}','${a.nombre}',${a.activo!==false})" style="display:inline-flex">${a.activo===false?"↩ Reactivar":"📦 Archivar"}</button>
@@ -723,7 +723,7 @@ async function viewAthlete(id){
             <span style="font-size:11px;color:var(--dim)">Micro ${p.microciclo_activo||p.microciclo} · Sem ${p.semana_activa||p.semana} · ${new Date(p.created_at).toLocaleDateString("es-AR")}</span>
             ${p.activo?'<span style="font-size:9px;color:var(--success);font-weight:700;letter-spacing:1px">ACTIVO</span>':""}
             <div style="margin-left:auto;display:flex;gap:6px;flex-shrink:0;">
-              ${p.activo?`<button class="btn btn-primary btn-sm" onclick="setupNewPlan('${a.id}')" style="display:inline-flex;margin-right:4px">+ Cargar próximo micro</button>`:""} ${!p.activo?`<button class="btn btn-ghost btn-sm" onclick="activatePlan('${p.id}','${a.id}')" style="display:inline-flex">✓ Activar</button>`:""}
+              ${p.activo&&parseInt(a.dias_por_semana)>1?`<button class="btn btn-primary btn-sm" onclick="setupNewPlan('${a.id}')" style="display:inline-flex;margin-right:4px">+ Cargar próximo micro</button>`:""} ${!p.activo?`<button class="btn btn-ghost btn-sm" onclick="activatePlan('${p.id}','${a.id}')" style="display:inline-flex">✓ Activar</button>`:""}
               <button class="btn btn-ghost btn-sm" onclick="deletePlan('${p.id}','${a.id}')" style="display:inline-flex;color:#d47070">✕ Borrar</button>
             </div>
           </div>
@@ -1134,8 +1134,8 @@ function renderDayBlocks(di,int){
         </div>
         <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;align-items:flex-end;">
           <div class="ex-mini-group" style="flex:1;min-width:90px"><div class="ex-mini-lbl">Video URL</div><input class="ex-mini" type="text" value="${ex.videoUrl||''}" placeholder="youtube.com/..." oninput="uef(${di},${bi},${ei},'videoUrl',this.value)"></div>
-          <div class="ex-mini-group" style="flex:0 0 55px"><div class="ex-mini-lbl">Series</div><input class="ex-mini" type="text" value="${ex.overrideInt&&ex.series?ex.series:isOneDayPlan()?ex.series||'4':bi2.s}" style="text-align:center" oninput="uef(${di},${bi},${ei},'series',this.value)"></div>
-          <div class="ex-mini-group" style="flex:0 0 55px"><div class="ex-mini-lbl">Reps</div><input class="ex-mini" type="text" value="${ex.overrideInt&&ex.reps?ex.reps:isOneDayPlan()?ex.reps||'8':bi2.r}" style="text-align:center" oninput="uef(${di},${bi},${ei},'reps',this.value)"></div>
+          <div class="ex-mini-group" style="flex:0 0 55px"><div class="ex-mini-lbl">Series</div><input class="ex-mini" type="text" value="${isOneDayPlan()?(ex.series||""):ex.overrideInt&&ex.series?ex.series:bi2.s}" style="text-align:center" oninput="uef(${di},${bi},${ei},'series',this.value)"></div>
+          <div class="ex-mini-group" style="flex:0 0 55px"><div class="ex-mini-lbl">Reps</div><input class="ex-mini" type="text" value="${isOneDayPlan()?(ex.reps||""):ex.overrideInt&&ex.reps?ex.reps:bi2.r}" style="text-align:center" oninput="uef(${di},${bi},${ei},'reps',this.value)"></div>
           ${isOneDayPlan()?`
           <div class="ex-mini-group" style="flex:0 0 65px"><div class="ex-mini-lbl">RPE/RIR</div><input class="ex-mini" type="text" value="${ex.rpeRir||''}" placeholder="RPE 8" style="text-align:center" oninput="uef(${di},${bi},${ei},'rpeRir',this.value)"></div>
           `:`<label style="display:flex;align-items:center;gap:3px;font-size:9px;color:var(--dim);cursor:pointer;padding-bottom:6px"><input type="checkbox" ${ex.overrideInt?'checked':''} onchange="tov(${di},${bi},${ei},this.checked)">Int. propia</label>`}
@@ -1145,7 +1145,7 @@ function renderDayBlocks(di,int){
       <div class="block-header" onclick="this.closest('.block').classList.toggle('open')">
         <span class="block-badge" style="color:${c};border-color:${c}40;background:${c}15">${block.badge}</span>
         <span class="block-type-lbl">${block.type}</span>
-        <span style="font-size:9px;color:var(--dim)">${bi2.s}×${bi2.r} · ${bi2.rir}</span>
+        <span style="font-size:9px;color:var(--dim)">${isOneDayPlan()?"":bi2.s+"×"+bi2.r+" · "+bi2.rir}</span>
         <span class="block-chevron">↓</span>
       </div>
       <div class="block-body">
