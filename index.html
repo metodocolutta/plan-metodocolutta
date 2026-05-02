@@ -926,7 +926,21 @@ async function setupNewPlan(athleteId){
               📋 Pre-cargado desde ${curFase} · Micro ${curMicro} — revisá y ajustá intensidad para ${nextFase} · Micro ${nextMicro}
             </div>`;
           }
-          setTimeout(()=>{updateIntPreview();renderDays();},80);
+          setTimeout(()=>{
+            updateMicroOptions();
+            // Hide phase/intensity for 1-day plans
+            const phaseCtrl2=document.getElementById("phase-controls");
+            const intCard2=document.getElementById("np-int-card");
+            if(isOneDay){
+              if(phaseCtrl2) phaseCtrl2.style.display="none";
+              if(intCard2) intCard2.style.display="none";
+            } else {
+              if(phaseCtrl2) phaseCtrl2.style.display="contents";
+              if(intCard2) intCard2.style.display="block";
+              updateIntPreview();
+            }
+            renderDays();
+          },80);
           return;
         }
       }
@@ -935,7 +949,21 @@ async function setupNewPlan(athleteId){
   // Fallback: use template
   const tmpl=DAY_TEMPLATES[parseInt(a?.dias_por_semana)||4]||DAY_TEMPLATES[4];
   planDays=tmpl.map(d=>({label:d.label,desc:d.desc,blocks:d.blocks.map(b=>({type:b.type,badge:b.badge,note:b.note,exercises:[{name:"",custom:"",videoUrl:"",overrideInt:false,series:"",reps:""}]}))}));
-  setTimeout(()=>{updateIntPreview();renderVariantSelector();},80);
+  setTimeout(()=>{
+    updateMicroOptions();
+    // Hide phase/intensity for 1-day plans
+    const phaseCtrl=document.getElementById("phase-controls");
+    const intCard=document.getElementById("np-int-card");
+    if(isOneDay){
+      if(phaseCtrl) phaseCtrl.style.display="none";
+      if(intCard) intCard.style.display="none";
+    } else {
+      if(phaseCtrl) phaseCtrl.style.display="contents";
+      if(intCard) intCard.style.display="block";
+      updateIntPreview();
+    }
+    renderVariantSelector();
+  },80);
 }
 
 function renderVariantSelector(){
